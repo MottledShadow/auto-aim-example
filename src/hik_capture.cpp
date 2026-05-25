@@ -1,0 +1,674 @@
+#include <atomic>
+#include <cerrno>
+#include <csignal>
+#include <cstdlib>
+#include <cstring>
+#include <iomanip>
+#include <iostream>
+#include <sstream>
+#include <stdexcept>
+#include <string>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <vector>
+
+#include <opencv2/highgui.hpp>
+#include <opencv2/imgcodecs.hpp>
+#include <opencv2/imgproc.hpp>
+
+#include "MvCameraControl.h"
+
+namespace
+{
+
+std::atomic_bool g_stop{false};
+
+void handleSignal(int)
+{
+    g_stop = true;
+}
+
+std::string retHex(int ret)
+{
+    std::ostringstream os;
+    os << "0x" << std::hex << std::uppercase << ret;
+    return os.str();
+}
+
+void throwOnError(int ret, const std::string& what)
+{
+    if (ret != MV_OK)
+    {
+        throw std::runtime_error(what + " failed, ret=" + retHex(ret));
+    }
+}
+
+void warnOnError(int ret, const std::string& what)
+{
+    if (ret != MV_OK)
+    {
+        std::cerr << "warning: " << what << " failed, ret=" << retHex(ret) << '\n';
+    }
+}
+
+std::string safeText(const char* text, std::size_t max_len)
+{
+    std::size_t len = 0;
+    while (len < max_len && text[len] != '\0')
+    {
+        ++len;
+    }
+    return std::string(text, len);
+}
+
+std::string safeText(const unsigned char* text, std::size_t max_len)
+{
+    return safeText(reinterpret_cast<const char*>(text), max_len);
+}
+
+template <std::size_t N>
+std::string safeText(const char (&text)[N])
+{
+    return safeText(text, N);
+}
+
+template <std::size_t N>
+std::string safeText(const unsigned char (&text)[N])
+{
+    return safeText(text, N);
+}
+
+std::string currentIp(unsigned int ip)
+{
+    std::ostringstream os;
+    os << ((ip & 0xff000000) >> 24) << '.'
+       << ((ip & 0x00ff0000) >> 16) << '.'
+       << ((ip & 0x0000ff00) >> 8) << '.'
+       << (ip & 0x000000ff);
+    return os.str();
+}
+
+void printDeviceInfo(unsigned int index, const MV_CC_DEVICE_INFO* info)
+{
+    if (info == nullptr)
+    {
+        std::cout << '[' << index << "] null device info\n";
+        return;
+    }
+
+    std::cout << '[' << index << "] ";
+    if (info->nTLayerType == MV_GIGE_DEVICE)
+    {
+        const auto& gige = info->SpecialInfo.stGigEInfo;
+        std::cout << "GigE  "
+                  << "model=" << safeText(gige.chModelName) << "  "
+                  << "serial=" << safeText(gige.chSerialNumber) << "  "
+                  << "name=" << safeText(gige.chUserDefinedName) << "  "
+                  << "ip=" << currentIp(gige.nCurrentIp) << '\n';
+    }
+    else if (info->nTLayerType == MV_USB_DEVICE)
+    {
+        const auto& usb = info->SpecialInfo.stUsb3VInfo;
+        std::cout << "USB3  "
+                  << "model=" << safeText(usb.chModelName) << "  "
+                  << "serial=" << safeText(usb.chSerialNumber) << "  "
+                  << "name=" << safeText(usb.chUserDefinedName) << '\n';
+    }
+    else
+    {
+        std::cout << "unsupported transport layer: " << info->nTLayerType << '\n';
+    }
+}
+
+bool startsWith(const std::string& text, const std::string& prefix)
+{
+    return text.size() >= prefix.size() && text.compare(0, prefix.size(), prefix) == 0;
+}
+
+std::string takeValue(int& i, int argc, char** argv, const std::string& arg, const std::string& key)
+{
+    const std::string with_equals = key + "=";
+    if (startsWith(arg, with_equals))
+    {
+        return arg.substr(with_equals.size());
+    }
+    if (arg == key && i + 1 < argc)
+    {
+        return argv[++i];
+    }
+    throw std::runtime_error("missing value for " + key);
+}
+
+unsigned int parseUInt(const std::string& value, const std::string& key)
+{
+    std::size_t pos = 0;
+    unsigned long parsed = std::stoul(value, &pos, 10);
+    if (pos != value.size())
+    {
+        throw std::runtime_error("invalid integer for " + key + ": " + value);
+    }
+    return static_cast<unsigned int>(parsed);
+}
+
+float parseFloat(const std::string& value, const std::string& key)
+{
+    std::size_t pos = 0;
+    float parsed = std::stof(value, &pos);
+    if (pos != value.size())
+    {
+        throw std::runtime_error("invalid number for " + key + ": " + value);
+    }
+    return parsed;
+}
+
+struct Options
+{
+    unsigned int index = 0;
+    unsigned int frames = 1;
+    int timeout_ms = 1000;
+    std::string output_dir = "captures";
+    bool list_only = false;
+    bool save = true;
+    bool show = false;
+    bool has_exposure = false;
+    bool has_gain = false;
+    bool has_width = false;
+    bool has_height = false;
+    float exposure_us = 0.0F;
+    float gain = 0.0F;
+    unsigned int width = 0;
+    unsigned int height = 0;
+};
+
+void printUsage(const char* exe)
+{
+    std::cout
+        << "Usage: " << exe << " [options]\n\n"
+        << "Options:\n"
+        << "  --list                    list cameras and exit\n"
+        << "  --index N                 camera index, default 0\n"
+        << "  --frames N                number of frames to grab, 0 means until Ctrl-C\n"
+        << "  --timeout-ms N            frame timeout, default 1000\n"
+        << "  --output DIR              save PNG frames to DIR, default captures\n"
+        << "  --no-save                 grab/preview without writing images\n"
+        << "  --show                    show live OpenCV preview, press q or Esc to quit\n"
+        << "  --exposure-us VALUE       set manual exposure time in microseconds\n"
+        << "  --gain VALUE              set manual gain\n"
+        << "  --width N                 set camera Width before grabbing\n"
+        << "  --height N                set camera Height before grabbing\n"
+        << "  --help                    show this help\n\n"
+        << "Examples:\n"
+        << "  " << exe << " --list\n"
+        << "  " << exe << " --index 0 --frames 10 --output captures\n"
+        << "  " << exe << " --index 0 --frames 0 --show --no-save --exposure-us 3000\n";
+}
+
+Options parseArgs(int argc, char** argv)
+{
+    Options options;
+    for (int i = 1; i < argc; ++i)
+    {
+        const std::string arg = argv[i];
+        if (arg == "--help" || arg == "-h")
+        {
+            printUsage(argv[0]);
+            std::exit(0);
+        }
+        if (arg == "--list")
+        {
+            options.list_only = true;
+        }
+        else if (arg == "--no-save")
+        {
+            options.save = false;
+        }
+        else if (arg == "--show")
+        {
+            options.show = true;
+        }
+        else if (arg == "--index" || startsWith(arg, "--index="))
+        {
+            options.index = parseUInt(takeValue(i, argc, argv, arg, "--index"), "--index");
+        }
+        else if (arg == "--frames" || startsWith(arg, "--frames="))
+        {
+            options.frames = parseUInt(takeValue(i, argc, argv, arg, "--frames"), "--frames");
+        }
+        else if (arg == "--timeout-ms" || startsWith(arg, "--timeout-ms="))
+        {
+            options.timeout_ms = static_cast<int>(parseUInt(takeValue(i, argc, argv, arg, "--timeout-ms"), "--timeout-ms"));
+        }
+        else if (arg == "--output" || startsWith(arg, "--output="))
+        {
+            options.output_dir = takeValue(i, argc, argv, arg, "--output");
+        }
+        else if (arg == "--exposure-us" || startsWith(arg, "--exposure-us="))
+        {
+            options.has_exposure = true;
+            options.exposure_us = parseFloat(takeValue(i, argc, argv, arg, "--exposure-us"), "--exposure-us");
+        }
+        else if (arg == "--gain" || startsWith(arg, "--gain="))
+        {
+            options.has_gain = true;
+            options.gain = parseFloat(takeValue(i, argc, argv, arg, "--gain"), "--gain");
+        }
+        else if (arg == "--width" || startsWith(arg, "--width="))
+        {
+            options.has_width = true;
+            options.width = parseUInt(takeValue(i, argc, argv, arg, "--width"), "--width");
+        }
+        else if (arg == "--height" || startsWith(arg, "--height="))
+        {
+            options.has_height = true;
+            options.height = parseUInt(takeValue(i, argc, argv, arg, "--height"), "--height");
+        }
+        else
+        {
+            throw std::runtime_error("unknown option: " + arg);
+        }
+    }
+    return options;
+}
+
+void ensureDirectory(const std::string& path)
+{
+    if (path.empty())
+    {
+        throw std::runtime_error("output directory cannot be empty");
+    }
+
+    struct stat st = {};
+    if (::stat(path.c_str(), &st) == 0)
+    {
+        if (!S_ISDIR(st.st_mode))
+        {
+            throw std::runtime_error("output path exists but is not a directory: " + path);
+        }
+        return;
+    }
+
+    if (errno != ENOENT)
+    {
+        throw std::runtime_error("cannot inspect output path: " + path);
+    }
+
+    if (::mkdir(path.c_str(), 0755) != 0)
+    {
+        throw std::runtime_error("cannot create output directory: " + path);
+    }
+}
+
+unsigned int frameWidth(const MV_FRAME_OUT_INFO_EX& info)
+{
+    return info.nExtendWidth != 0 ? info.nExtendWidth : info.nWidth;
+}
+
+unsigned int frameHeight(const MV_FRAME_OUT_INFO_EX& info)
+{
+    return info.nExtendHeight != 0 ? info.nExtendHeight : info.nHeight;
+}
+
+std::string framePath(const std::string& output_dir, unsigned int saved_index)
+{
+    std::ostringstream os;
+    os << output_dir << "/frame_" << std::setw(6) << std::setfill('0') << saved_index << ".png";
+    return os.str();
+}
+
+class SdkGuard
+{
+public:
+    SdkGuard()
+    {
+        throwOnError(MV_CC_Initialize(), "MV_CC_Initialize");
+    }
+
+    ~SdkGuard()
+    {
+        MV_CC_Finalize();
+    }
+
+    SdkGuard(const SdkGuard&) = delete;
+    SdkGuard& operator=(const SdkGuard&) = delete;
+};
+
+class CameraHandle
+{
+public:
+    ~CameraHandle()
+    {
+        stop();
+        close();
+        destroy();
+    }
+
+    void create(MV_CC_DEVICE_INFO* info)
+    {
+        throwOnError(MV_CC_CreateHandle(&handle_, info), "MV_CC_CreateHandle");
+    }
+
+    void open()
+    {
+        throwOnError(MV_CC_OpenDevice(handle_), "MV_CC_OpenDevice");
+        opened_ = true;
+    }
+
+    void start()
+    {
+        throwOnError(MV_CC_StartGrabbing(handle_), "MV_CC_StartGrabbing");
+        grabbing_ = true;
+    }
+
+    void* get() const
+    {
+        return handle_;
+    }
+
+private:
+    void stop()
+    {
+        if (grabbing_)
+        {
+            warnOnError(MV_CC_StopGrabbing(handle_), "MV_CC_StopGrabbing");
+            grabbing_ = false;
+        }
+    }
+
+    void close()
+    {
+        if (opened_)
+        {
+            warnOnError(MV_CC_CloseDevice(handle_), "MV_CC_CloseDevice");
+            opened_ = false;
+        }
+    }
+
+    void destroy()
+    {
+        if (handle_ != nullptr)
+        {
+            warnOnError(MV_CC_DestroyHandle(handle_), "MV_CC_DestroyHandle");
+            handle_ = nullptr;
+        }
+    }
+
+    void* handle_ = nullptr;
+    bool opened_ = false;
+    bool grabbing_ = false;
+};
+
+void setGigEPacketSizeIfNeeded(void* handle, const MV_CC_DEVICE_INFO* info)
+{
+    if (info->nTLayerType != MV_GIGE_DEVICE)
+    {
+        return;
+    }
+
+    const int packet_size = MV_CC_GetOptimalPacketSize(handle);
+    if (packet_size > 0)
+    {
+        warnOnError(MV_CC_SetIntValue(handle, "GevSCPSPacketSize", packet_size), "set GevSCPSPacketSize");
+    }
+    else
+    {
+        std::cerr << "warning: MV_CC_GetOptimalPacketSize failed, ret=" << retHex(packet_size) << '\n';
+    }
+}
+
+void applyCameraOptions(void* handle, const MV_CC_DEVICE_INFO* info, const Options& options)
+{
+    setGigEPacketSizeIfNeeded(handle, info);
+
+    throwOnError(MV_CC_SetEnumValue(handle, "TriggerMode", 0), "set TriggerMode=Off");
+    warnOnError(MV_CC_SetBayerCvtQuality(handle, 1), "set Bayer conversion quality");
+
+    if (options.has_width)
+    {
+        warnOnError(MV_CC_SetIntValue(handle, "Width", options.width), "set Width");
+    }
+    if (options.has_height)
+    {
+        warnOnError(MV_CC_SetIntValue(handle, "Height", options.height), "set Height");
+    }
+    if (options.has_exposure)
+    {
+        warnOnError(MV_CC_SetEnumValue(handle, "ExposureAuto", 0), "set ExposureAuto=Off");
+        warnOnError(MV_CC_SetFloatValue(handle, "ExposureTime", options.exposure_us), "set ExposureTime");
+    }
+    if (options.has_gain)
+    {
+        warnOnError(MV_CC_SetEnumValue(handle, "GainAuto", 0), "set GainAuto=Off");
+        warnOnError(MV_CC_SetFloatValue(handle, "Gain", options.gain), "set Gain");
+    }
+}
+
+class CameraSession
+{
+public:
+    CameraSession(MV_CC_DEVICE_INFO* info, const Options& options)
+    {
+        camera_.create(info);
+        camera_.open();
+        applyCameraOptions(camera_.get(), info, options);
+        camera_.start();
+    }
+
+    void* handle() const
+    {
+        return camera_.get();
+    }
+
+private:
+    CameraHandle camera_;
+};
+
+class FrameBuffer
+{
+public:
+    explicit FrameBuffer(void* handle) : handle_(handle)
+    {
+    }
+
+    ~FrameBuffer()
+    {
+        release();
+    }
+
+    MV_FRAME_OUT* out()
+    {
+        return &frame_;
+    }
+
+    const MV_FRAME_OUT& frame() const
+    {
+        return frame_;
+    }
+
+    void markAcquired()
+    {
+        acquired_ = true;
+    }
+
+private:
+    void release()
+    {
+        if (acquired_ && frame_.pBufAddr != nullptr)
+        {
+            warnOnError(MV_CC_FreeImageBuffer(handle_, &frame_), "MV_CC_FreeImageBuffer");
+            acquired_ = false;
+        }
+    }
+
+    void* handle_ = nullptr;
+    MV_FRAME_OUT frame_{};
+    bool acquired_ = false;
+};
+
+cv::Mat convertFrameToBgrOrGray(void* handle, const MV_FRAME_OUT& frame)
+{
+    const MV_FRAME_OUT_INFO_EX& info = frame.stFrameInfo;
+    const unsigned int width = frameWidth(info);
+    const unsigned int height = frameHeight(info);
+
+    if (width == 0 || height == 0 || frame.pBufAddr == nullptr)
+    {
+        throw std::runtime_error("empty frame buffer");
+    }
+
+    if (info.enPixelType == PixelType_Gvsp_Mono8)
+    {
+        return cv::Mat(static_cast<int>(height), static_cast<int>(width), CV_8UC1, frame.pBufAddr).clone();
+    }
+
+    if (info.enPixelType == PixelType_Gvsp_BGR8_Packed)
+    {
+        return cv::Mat(static_cast<int>(height), static_cast<int>(width), CV_8UC3, frame.pBufAddr).clone();
+    }
+
+    if (info.enPixelType == PixelType_Gvsp_RGB8_Packed)
+    {
+        cv::Mat rgb(static_cast<int>(height), static_cast<int>(width), CV_8UC3, frame.pBufAddr);
+        cv::Mat bgr;
+        cv::cvtColor(rgb, bgr, cv::COLOR_RGB2BGR);
+        return bgr;
+    }
+
+    std::vector<unsigned char> converted(static_cast<std::size_t>(width) * height * 3 + 2048);
+    MV_CC_PIXEL_CONVERT_PARAM param{};
+    param.nWidth = width;
+    param.nHeight = height;
+    param.pSrcData = frame.pBufAddr;
+    param.nSrcDataLen = info.nFrameLenEx;
+    param.enSrcPixelType = info.enPixelType;
+    param.enDstPixelType = PixelType_Gvsp_BGR8_Packed;
+    param.pDstBuffer = converted.data();
+    param.nDstBufferSize = static_cast<unsigned int>(converted.size());
+
+    throwOnError(MV_CC_ConvertPixelType(handle, &param), "MV_CC_ConvertPixelType");
+
+    cv::Mat bgr(static_cast<int>(height), static_cast<int>(width), CV_8UC3, converted.data());
+    return bgr.clone();
+}
+
+MV_CC_DEVICE_INFO_LIST enumDevices()
+{
+    MV_CC_DEVICE_INFO_LIST list{};
+    throwOnError(MV_CC_EnumDevices(MV_GIGE_DEVICE | MV_USB_DEVICE, &list), "MV_CC_EnumDevices");
+    return list;
+}
+
+int run(const Options& options)
+{
+    SdkGuard sdk;
+    MV_CC_DEVICE_INFO_LIST devices = enumDevices();
+
+    if (devices.nDeviceNum == 0)
+    {
+        std::cerr << "no Hikrobot camera found\n";
+        return 2;
+    }
+
+    for (unsigned int i = 0; i < devices.nDeviceNum; ++i)
+    {
+        printDeviceInfo(i, devices.pDeviceInfo[i]);
+    }
+
+    if (options.list_only)
+    {
+        return 0;
+    }
+
+    if (options.index >= devices.nDeviceNum)
+    {
+        std::cerr << "camera index out of range: " << options.index << '\n';
+        return 2;
+    }
+
+    MV_CC_DEVICE_INFO* selected = devices.pDeviceInfo[options.index];
+    if (!MV_CC_IsDeviceAccessible(selected, MV_ACCESS_Exclusive))
+    {
+        std::cerr << "camera " << options.index << " is not accessible in exclusive mode\n";
+        return 2;
+    }
+
+    if (options.save)
+    {
+        ensureDirectory(options.output_dir);
+    }
+
+    CameraSession camera(selected, options);
+    unsigned int saved = 0;
+
+    while (!g_stop && (options.frames == 0 || saved < options.frames))
+    {
+        FrameBuffer buffer(camera.handle());
+        const int ret = MV_CC_GetImageBuffer(camera.handle(), buffer.out(), options.timeout_ms);
+        if (ret != MV_OK)
+        {
+            std::cerr << "warning: frame timeout/error, ret=" << retHex(ret) << '\n';
+            continue;
+        }
+        buffer.markAcquired();
+
+        const MV_FRAME_OUT_INFO_EX& info = buffer.frame().stFrameInfo;
+        cv::Mat image = convertFrameToBgrOrGray(camera.handle(), buffer.frame());
+        std::cout << "frame=" << info.nFrameNum
+                  << " size=" << image.cols << 'x' << image.rows
+                  << " channels=" << image.channels()
+                  << " pixelType=" << retHex(static_cast<int>(info.enPixelType));
+
+        if (options.save)
+        {
+            const std::string path = framePath(options.output_dir, saved);
+            if (!cv::imwrite(path, image))
+            {
+                throw std::runtime_error("cv::imwrite failed: " + path);
+            }
+            std::cout << " saved=" << path;
+        }
+        std::cout << '\n';
+
+        if (options.show)
+        {
+            cv::Mat preview;
+            if (image.channels() == 1)
+            {
+                cv::cvtColor(image, preview, cv::COLOR_GRAY2BGR);
+            }
+            else
+            {
+                preview = image;
+            }
+            cv::imshow("hik_capture", preview);
+            const int key = cv::waitKey(1);
+            if (key == 27 || key == 'q' || key == 'Q')
+            {
+                break;
+            }
+        }
+
+        ++saved;
+    }
+
+    return 0;
+}
+
+} // namespace
+
+int main(int argc, char** argv)
+{
+    std::signal(SIGINT, handleSignal);
+    std::signal(SIGTERM, handleSignal);
+
+    try
+    {
+        const Options options = parseArgs(argc, argv);
+        return run(options);
+    }
+    catch (const std::exception& ex)
+    {
+        std::cerr << "error: " << ex.what() << "\n\n";
+        printUsage(argv[0]);
+        return 1;
+    }
+}
