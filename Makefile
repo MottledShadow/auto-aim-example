@@ -17,7 +17,7 @@ OPENCV_CFLAGS ?= $(shell pkg-config --cflags opencv4 2>/dev/null)
 OPENCV_LIBS ?= $(shell pkg-config --libs opencv4 2>/dev/null)
 
 CXXFLAGS ?= -std=c++17 -O2 -Wall -Wextra -Wpedantic
-CPPFLAGS += -I$(MVCAM_INCLUDE) $(OPENCV_CFLAGS)
+CPPFLAGS += -Iinclude -I$(MVCAM_INCLUDE) $(OPENCV_CFLAGS)
 LDFLAGS += -L$(MVCAM_LIB_DIR) -Wl,-rpath,$(MVCAM_LIB_DIR)
 LDLIBS += -lMvCameraControl $(OPENCV_LIBS)
 

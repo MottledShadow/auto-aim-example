@@ -5,6 +5,7 @@
 ## 现在有什么
 
 - `src/hik_capture.cpp`：枚举海康 GigE/USB3 相机，打开指定相机，取流并转换成 OpenCV `cv::Mat`。
+- `include/armor_types.hpp`：装甲板识别中的基础数据结构，包含灯条 `LightBar` 和装甲板 `Armor`。
 - `Makefile`：不再写死官方 Sample 的相对路径，默认按 `/opt/MVS` 或 `MVCAM_COMMON_RUNENV` 找海康 MVS SDK。
 - 输出图像默认保存为 `captures/frame_000000.png` 这种 PNG，方便调试预处理和灯条识别。
 
