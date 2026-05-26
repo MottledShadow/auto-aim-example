@@ -6,6 +6,7 @@
 
 - `src/hik_capture.cpp`：枚举海康 GigE/USB3 相机，打开指定相机，取流并转换成 OpenCV `cv::Mat`。
 - `include/armor_types.hpp`：装甲板识别中的基础数据结构，包含灯条 `LightBar` 和装甲板 `Armor`。
+- `include/armor_preprocessor.hpp` / `src/armor_preprocessor.cpp`：每帧图像的灰度化、亮区二值化、开闭运算、轮廓提取、最小外接矩形和中心线提取。
 - `Makefile`：不再写死官方 Sample 的相对路径，默认按 `/opt/MVS` 或 `MVCAM_COMMON_RUNENV` 找海康 MVS SDK。
 - 输出图像默认保存为 `captures/frame_000000.png` 这种 PNG，方便调试预处理和灯条识别。
 
@@ -50,6 +51,12 @@ make MVCAM_INCLUDE=/path/to/include MVCAM_LIB_DIR=/path/to/lib/aarch64
 
 ```bash
 ./build/hik_capture --index 0 --frames 0 --show --no-save --exposure-us 3000 --gain 8
+```
+
+调试预处理阈值和形态学参数：
+
+```bash
+./build/hik_capture --index 0 --frames 0 --show-binary --no-save --binary-threshold 180 --open-kernel 3 --close-kernel 3
 ```
 
 后面接装甲板识别时，可以把 `convertFrameToBgrOrGray()` 返回的 `cv::Mat image` 作为预处理入口：颜色阈值、灯条轮廓、灯条配对、角点排序、PnP 都从这里往后接。

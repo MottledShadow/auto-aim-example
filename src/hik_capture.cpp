@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <atomic>
 #include <cerrno>
 #include <csignal>
@@ -16,6 +17,7 @@
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 
+#include "armor_preprocessor.hpp"
 #include "MvCameraControl.h"
 
 namespace
@@ -150,6 +152,16 @@ unsigned int parseUInt(const std::string& value, const std::string& key)
     return static_cast<unsigned int>(parsed);
 }
 
+int parseByte(const std::string& value, const std::string& key)
+{
+    const unsigned int parsed = parseUInt(value, key);
+    if (parsed > 255)
+    {
+        throw std::runtime_error("invalid threshold for " + key + ": " + value);
+    }
+    return static_cast<int>(parsed);
+}
+
 float parseFloat(const std::string& value, const std::string& key)
 {
     std::size_t pos = 0;
@@ -170,10 +182,12 @@ struct Options
     bool list_only = false;
     bool save = true;
     bool show = false;
+    bool show_binary = false;
     bool has_exposure = false;
     bool has_gain = false;
     bool has_width = false;
     bool has_height = false;
+    auto_aim::ArmorPreprocessParams preprocess;
     float exposure_us = 0.0F;
     float gain = 0.0F;
     unsigned int width = 0;
@@ -192,6 +206,11 @@ void printUsage(const char* exe)
         << "  --output DIR              save PNG frames to DIR, default captures\n"
         << "  --no-save                 grab/preview without writing images\n"
         << "  --show                    show live OpenCV preview, press q or Esc to quit\n"
+        << "  --show-binary             show preprocessed binary image instead of raw preview\n"
+        << "  --binary-threshold N      threshold for bright region extraction, default 180\n"
+        << "  --open-kernel N           opening kernel size, 0 disables opening, default 3\n"
+        << "  --close-kernel N          closing kernel size, 0 disables closing, default 3\n"
+        << "  --morph-iterations N      opening/closing iterations, default 1\n"
         << "  --exposure-us VALUE       set manual exposure time in microseconds\n"
         << "  --gain VALUE              set manual gain\n"
         << "  --width N                 set camera Width before grabbing\n"
@@ -226,6 +245,11 @@ Options parseArgs(int argc, char** argv)
         {
             options.show = true;
         }
+        else if (arg == "--show-binary")
+        {
+            options.show_binary = true;
+            options.show = true;
+        }
         else if (arg == "--index" || startsWith(arg, "--index="))
         {
             options.index = parseUInt(takeValue(i, argc, argv, arg, "--index"), "--index");
@@ -241,6 +265,27 @@ Options parseArgs(int argc, char** argv)
         else if (arg == "--output" || startsWith(arg, "--output="))
         {
             options.output_dir = takeValue(i, argc, argv, arg, "--output");
+        }
+        else if (arg == "--binary-threshold" || startsWith(arg, "--binary-threshold="))
+        {
+            options.preprocess.binary_threshold = parseByte(
+                takeValue(i, argc, argv, arg, "--binary-threshold"),
+                "--binary-threshold");
+        }
+        else if (arg == "--open-kernel" || startsWith(arg, "--open-kernel="))
+        {
+            options.preprocess.open_kernel_size = static_cast<int>(
+                parseUInt(takeValue(i, argc, argv, arg, "--open-kernel"), "--open-kernel"));
+        }
+        else if (arg == "--close-kernel" || startsWith(arg, "--close-kernel="))
+        {
+            options.preprocess.close_kernel_size = static_cast<int>(
+                parseUInt(takeValue(i, argc, argv, arg, "--close-kernel"), "--close-kernel"));
+        }
+        else if (arg == "--morph-iterations" || startsWith(arg, "--morph-iterations="))
+        {
+            options.preprocess.morph_iterations = static_cast<int>(
+                parseUInt(takeValue(i, argc, argv, arg, "--morph-iterations"), "--morph-iterations"));
         }
         else if (arg == "--exposure-us" || startsWith(arg, "--exposure-us="))
         {
@@ -313,6 +358,41 @@ std::string framePath(const std::string& output_dir, unsigned int saved_index)
     std::ostringstream os;
     os << output_dir << "/frame_" << std::setw(6) << std::setfill('0') << saved_index << ".png";
     return os.str();
+}
+
+void drawCandidateRects(cv::Mat& image, const std::vector<cv::RotatedRect>& rects)
+{
+    for (const auto& rect : rects)
+    {
+        cv::Point2f vertices[4];
+        rect.points(vertices);
+        for (int i = 0; i < 4; ++i)
+        {
+            cv::line(image, vertices[i], vertices[(i + 1) % 4], cv::Scalar(0, 255, 0), 2);
+        }
+    }
+}
+
+void drawCandidateCenterLines(
+    cv::Mat& image,
+    const std::vector<cv::RotatedRect>& rects,
+    const std::vector<cv::Vec4f>& center_lines)
+{
+    const std::size_t count = std::min(rects.size(), center_lines.size());
+    for (std::size_t i = 0; i < count; ++i)
+    {
+        const cv::Vec4f& line = center_lines[i];
+        const cv::RotatedRect& rect = rects[i];
+        const cv::Point2f direction(line[0], line[1]);
+        const cv::Point2f point_on_line(line[2], line[3]);
+        const float half_length = std::max(rect.size.width, rect.size.height) * 0.5F;
+        cv::line(
+            image,
+            point_on_line - direction * half_length,
+            point_on_line + direction * half_length,
+            cv::Scalar(0, 0, 255),
+            2);
+    }
 }
 
 class SdkGuard
@@ -597,6 +677,7 @@ int run(const Options& options)
     }
 
     CameraSession camera(selected, options);
+    auto_aim::ArmorPreprocessor preprocessor(options.preprocess);
     unsigned int saved = 0;
 
     while (!g_stop && (options.frames == 0 || saved < options.frames))
@@ -612,10 +693,14 @@ int run(const Options& options)
 
         const MV_FRAME_OUT_INFO_EX& info = buffer.frame().stFrameInfo;
         cv::Mat image = convertFrameToBgrOrGray(camera.handle(), buffer.frame());
+        const auto_aim::ArmorPreprocessResult preprocess = preprocessor.process(image);
         std::cout << "frame=" << info.nFrameNum
                   << " size=" << image.cols << 'x' << image.rows
                   << " channels=" << image.channels()
-                  << " pixelType=" << retHex(static_cast<int>(info.enPixelType));
+                  << " pixelType=" << retHex(static_cast<int>(info.enPixelType))
+                  << " contours=" << preprocess.contours.size()
+                  << " rects=" << preprocess.candidate_rects.size()
+                  << " lines=" << preprocess.candidate_center_lines.size();
 
         if (options.save)
         {
@@ -631,14 +716,23 @@ int run(const Options& options)
         if (options.show)
         {
             cv::Mat preview;
-            if (image.channels() == 1)
+            if (options.show_binary)
+            {
+                cv::cvtColor(preprocess.binary, preview, cv::COLOR_GRAY2BGR);
+            }
+            else if (image.channels() == 1)
             {
                 cv::cvtColor(image, preview, cv::COLOR_GRAY2BGR);
             }
             else
             {
-                preview = image;
+                preview = image.clone();
             }
+            drawCandidateRects(preview, preprocess.candidate_rects);
+            drawCandidateCenterLines(
+                preview,
+                preprocess.candidate_rects,
+                preprocess.candidate_center_lines);
             cv::imshow("hik_capture", preview);
             const int key = cv::waitKey(1);
             if (key == 27 || key == 'q' || key == 'Q')

@@ -1,6 +1,7 @@
 TARGET ?= hik_capture
 BUILD_DIR ?= build
-SRC := src/hik_capture.cpp
+SRCS := src/hik_capture.cpp src/armor_preprocessor.cpp
+HEADERS := include/armor_preprocessor.hpp include/armor_types.hpp
 
 CXX ?= g++
 UNAME_M := $(shell uname -m)
@@ -25,9 +26,9 @@ LDLIBS += -lMvCameraControl $(OPENCV_LIBS)
 
 all: $(BUILD_DIR)/$(TARGET)
 
-$(BUILD_DIR)/$(TARGET): $(SRC)
+$(BUILD_DIR)/$(TARGET): $(SRCS) $(HEADERS)
 	mkdir -p $(BUILD_DIR)
-	$(CXX) $(CXXFLAGS) $(CPPFLAGS) $< -o $@ $(LDFLAGS) $(LDLIBS)
+	$(CXX) $(CXXFLAGS) $(CPPFLAGS) $(SRCS) -o $@ $(LDFLAGS) $(LDLIBS)
 
 print-config:
 	@echo "CXX=$(CXX)"
