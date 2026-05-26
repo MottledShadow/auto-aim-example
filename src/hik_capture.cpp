@@ -17,6 +17,7 @@
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 
+#include "armor_matcher.hpp"
 #include "armor_preprocessor.hpp"
 #include "light_bar_filter.hpp"
 #include "MvCameraControl.h"
@@ -201,6 +202,7 @@ struct Options
     bool has_height = false;
     auto_aim::ArmorPreprocessParams preprocess;
     auto_aim::LightBarFilterParams light_filter;
+    auto_aim::ArmorMatcherParams armor_matcher;
     float exposure_us = 0.0F;
     float gain = 0.0F;
     unsigned int width = 0;
@@ -232,6 +234,11 @@ void printUsage(const char* exe)
         << "  --max-light-angle VALUE   maximum fitLine tilt from vertical, default 45\n"
         << "  --min-light-fill VALUE    minimum area/minAreaRect-area ratio, default 0.25\n"
         << "  --max-light-fill VALUE    maximum area/minAreaRect-area ratio, default 1\n"
+        << "  --max-armor-length-ratio VALUE  maximum paired light length ratio, default 2\n"
+        << "  --max-armor-angle-diff VALUE    maximum paired light angle difference, default 10\n"
+        << "  --max-armor-y-diff VALUE        maximum paired light center y difference, default 40\n"
+        << "  --min-armor-distance-ratio VALUE minimum center distance / average height, default 0.5\n"
+        << "  --max-armor-distance-ratio VALUE maximum center distance / average height, default 8\n"
         << "  --exposure-us VALUE       set manual exposure time in microseconds\n"
         << "  --gain VALUE              set manual gain\n"
         << "  --width N                 set camera Width before grabbing\n"
@@ -355,6 +362,36 @@ Options parseArgs(int argc, char** argv)
             options.light_filter.max_fill_ratio = parseDouble(
                 takeValue(i, argc, argv, arg, "--max-light-fill"),
                 "--max-light-fill");
+        }
+        else if (arg == "--max-armor-length-ratio" || startsWith(arg, "--max-armor-length-ratio="))
+        {
+            options.armor_matcher.max_light_length_ratio = parseDouble(
+                takeValue(i, argc, argv, arg, "--max-armor-length-ratio"),
+                "--max-armor-length-ratio");
+        }
+        else if (arg == "--max-armor-angle-diff" || startsWith(arg, "--max-armor-angle-diff="))
+        {
+            options.armor_matcher.max_light_angle_diff_deg = parseDouble(
+                takeValue(i, argc, argv, arg, "--max-armor-angle-diff"),
+                "--max-armor-angle-diff");
+        }
+        else if (arg == "--max-armor-y-diff" || startsWith(arg, "--max-armor-y-diff="))
+        {
+            options.armor_matcher.max_light_center_y_diff = parseDouble(
+                takeValue(i, argc, argv, arg, "--max-armor-y-diff"),
+                "--max-armor-y-diff");
+        }
+        else if (arg == "--min-armor-distance-ratio" || startsWith(arg, "--min-armor-distance-ratio="))
+        {
+            options.armor_matcher.min_center_distance_ratio = parseDouble(
+                takeValue(i, argc, argv, arg, "--min-armor-distance-ratio"),
+                "--min-armor-distance-ratio");
+        }
+        else if (arg == "--max-armor-distance-ratio" || startsWith(arg, "--max-armor-distance-ratio="))
+        {
+            options.armor_matcher.max_center_distance_ratio = parseDouble(
+                takeValue(i, argc, argv, arg, "--max-armor-distance-ratio"),
+                "--max-armor-distance-ratio");
         }
         else if (arg == "--exposure-us" || startsWith(arg, "--exposure-us="))
         {
@@ -481,6 +518,27 @@ void drawLightBars(cv::Mat& image, const std::vector<auto_aim::LightBarCandidate
 
         cv::line(image, light.top, light.bottom, color, 3);
         cv::circle(image, light.center, 3, color, -1);
+    }
+}
+
+cv::Point toImagePoint(const cv::Point2f& point)
+{
+    return cv::Point(cvRound(point.x), cvRound(point.y));
+}
+
+void drawArmors(cv::Mat& image, const std::vector<auto_aim::ArmorCandidate>& armors)
+{
+    for (const auto& candidate : armors)
+    {
+        const auto& armor = candidate.armor;
+        std::vector<cv::Point> points{
+            toImagePoint(armor.left_light.top),
+            toImagePoint(armor.right_light.top),
+            toImagePoint(armor.right_light.bottom),
+            toImagePoint(armor.left_light.bottom),
+        };
+        cv::polylines(image, points, true, cv::Scalar(255, 255, 255), 2);
+        cv::circle(image, toImagePoint(armor.center), 4, cv::Scalar(255, 255, 255), -1);
     }
 }
 
@@ -768,6 +826,7 @@ int run(const Options& options)
     CameraSession camera(selected, options);
     auto_aim::ArmorPreprocessor preprocessor(options.preprocess);
     auto_aim::LightBarFilter light_bar_filter(options.light_filter);
+    auto_aim::ArmorMatcher armor_matcher(options.armor_matcher);
     unsigned int saved = 0;
 
     while (!g_stop && (options.frames == 0 || saved < options.frames))
@@ -785,6 +844,7 @@ int run(const Options& options)
         cv::Mat image = convertFrameToBgrOrGray(camera.handle(), buffer.frame());
         const auto_aim::ArmorPreprocessResult preprocess = preprocessor.process(image);
         const auto_aim::LightBarFilterResult light_bars = light_bar_filter.filter(image, preprocess);
+        const auto_aim::ArmorMatchResult armors = armor_matcher.match(light_bars);
         std::cout << "frame=" << info.nFrameNum
                   << " size=" << image.cols << 'x' << image.rows
                   << " channels=" << image.channels()
@@ -792,7 +852,8 @@ int run(const Options& options)
                   << " contours=" << preprocess.contours.size()
                   << " rects=" << preprocess.candidate_rects.size()
                   << " lines=" << preprocess.candidate_center_lines.size()
-                  << " lights=" << light_bars.candidates.size();
+                  << " lights=" << light_bars.candidates.size()
+                  << " armors=" << armors.candidates.size();
 
         if (options.save)
         {
@@ -826,6 +887,7 @@ int run(const Options& options)
                 preprocess.candidate_rects,
                 preprocess.candidate_center_lines);
             drawLightBars(preview, light_bars.candidates);
+            drawArmors(preview, armors.candidates);
             cv::imshow("hik_capture", preview);
             const int key = cv::waitKey(1);
             if (key == 27 || key == 'q' || key == 'Q')

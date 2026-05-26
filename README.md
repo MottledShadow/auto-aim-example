@@ -8,6 +8,7 @@
 - `include/armor_types.hpp`：装甲板识别中的基础数据结构，包含灯条 `LightBar` 和装甲板 `Armor`。
 - `include/armor_preprocessor.hpp` / `src/armor_preprocessor.cpp`：每帧图像的灰度化、亮区二值化、开闭运算、轮廓提取、最小外接矩形和中心线提取。
 - `include/light_bar_filter.hpp` / `src/light_bar_filter.cpp`：按面积、长短边比、fitLine 角度和外层轮廓填充率筛选灯条候选，并在轮廓 mask 内识别红/蓝颜色。
+- `include/armor_matcher.hpp` / `src/armor_matcher.cpp`：按长度比、角度差、中心 y 差、中心距比例、无遮挡和同色规则配对装甲板。
 - `Makefile`：不再写死官方 Sample 的相对路径，默认按 `/opt/MVS` 或 `MVCAM_COMMON_RUNENV` 找海康 MVS SDK。
 - 输出图像默认保存为 `captures/frame_000000.png` 这种 PNG，方便调试预处理和灯条识别。
 
@@ -64,6 +65,12 @@ make MVCAM_INCLUDE=/path/to/include MVCAM_LIB_DIR=/path/to/lib/aarch64
 
 ```bash
 ./build/hik_capture --index 0 --frames 0 --show --no-save --min-light-area 5 --max-light-area 1000000 --min-light-aspect 1.2 --max-light-aspect 50 --min-light-angle 0 --max-light-angle 45 --min-light-fill 0.25 --max-light-fill 1
+```
+
+调试灯条配对阈值：
+
+```bash
+./build/hik_capture --index 0 --frames 0 --show --no-save --max-armor-length-ratio 2 --max-armor-angle-diff 10 --max-armor-y-diff 40 --min-armor-distance-ratio 0.5 --max-armor-distance-ratio 8
 ```
 
 后面接装甲板识别时，可以把 `convertFrameToBgrOrGray()` 返回的 `cv::Mat image` 作为预处理入口：颜色阈值、灯条轮廓、灯条配对、角点排序、PnP 都从这里往后接。
