@@ -1,7 +1,7 @@
 TARGET ?= hik_capture
 BUILD_DIR ?= build
-SRCS := src/hik_capture.cpp src/armor_preprocessor.cpp src/light_bar_filter.cpp src/armor_matcher.cpp
-HEADERS := include/armor_preprocessor.hpp include/armor_types.hpp include/light_bar_filter.hpp include/armor_matcher.hpp
+SRCS := src/main.cpp src/hik_capture.cpp src/app_options.cpp src/debug_draw.cpp src/vision_pipeline.cpp src/armor_preprocessor.cpp src/light_bar_filter.cpp src/armor_matcher.cpp
+HEADERS := include/hik_capture.hpp include/app_options.hpp include/debug_draw.hpp include/vision_pipeline.hpp include/armor_preprocessor.hpp include/armor_types.hpp include/light_bar_filter.hpp include/armor_matcher.hpp
 
 CXX ?= g++
 UNAME_M := $(shell uname -m)

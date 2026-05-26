@@ -5,6 +5,10 @@
 ## 现在有什么
 
 - `src/hik_capture.cpp`：枚举海康 GigE/USB3 相机，打开指定相机，取流并转换成 OpenCV `cv::Mat`。
+- `src/main.cpp`：命令行程序入口，把相机取帧、视觉 pipeline、保存和预览串起来。
+- `include/app_options.hpp` / `src/app_options.cpp`：命令行参数解析。
+- `include/debug_draw.hpp` / `src/debug_draw.cpp`：调试显示绘制。
+- `include/vision_pipeline.hpp` / `src/vision_pipeline.cpp`：组合预处理、灯条筛选和装甲板配对。
 - `include/armor_types.hpp`：装甲板识别中的基础数据结构，包含灯条 `LightBar` 和装甲板 `Armor`。
 - `include/armor_preprocessor.hpp` / `src/armor_preprocessor.cpp`：每帧图像的灰度化、亮区二值化、开闭运算、轮廓提取、最小外接矩形和中心线提取。
 - `include/light_bar_filter.hpp` / `src/light_bar_filter.cpp`：按面积、长短边比、fitLine 角度和外层轮廓填充率筛选灯条候选，并在轮廓 mask 内识别红/蓝颜色。
