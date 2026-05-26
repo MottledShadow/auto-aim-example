@@ -104,6 +104,7 @@ ArmorPreprocessResult ArmorPreprocessor::process(const cv::Mat& frame) const
 
     result.candidate_rects.reserve(result.contours.size());
     result.candidate_center_lines.reserve(result.contours.size());
+    result.candidate_areas.reserve(result.contours.size());
     for (const auto& contour : result.contours)
     {
         if (contour.size() >= 2)
@@ -113,6 +114,7 @@ ArmorPreprocessResult ArmorPreprocessor::process(const cv::Mat& frame) const
             cv::Vec4f center_line;
             cv::fitLine(contour, center_line, cv::DIST_L2, 0, 0.01, 0.01);
             result.candidate_center_lines.emplace_back(center_line);
+            result.candidate_areas.emplace_back(std::abs(cv::contourArea(contour)));
         }
     }
 

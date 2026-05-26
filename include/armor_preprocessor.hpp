@@ -22,6 +22,7 @@ struct ArmorPreprocessResult
     std::vector<std::vector<cv::Point>> contours;
     std::vector<cv::RotatedRect> candidate_rects;
     std::vector<cv::Vec4f> candidate_center_lines;
+    std::vector<double> candidate_areas;
 };
 
 class ArmorPreprocessor

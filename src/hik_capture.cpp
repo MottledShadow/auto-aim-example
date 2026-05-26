@@ -18,6 +18,7 @@
 #include <opencv2/imgproc.hpp>
 
 #include "armor_preprocessor.hpp"
+#include "light_bar_filter.hpp"
 #include "MvCameraControl.h"
 
 namespace
@@ -173,6 +174,17 @@ float parseFloat(const std::string& value, const std::string& key)
     return parsed;
 }
 
+double parseDouble(const std::string& value, const std::string& key)
+{
+    std::size_t pos = 0;
+    double parsed = std::stod(value, &pos);
+    if (pos != value.size())
+    {
+        throw std::runtime_error("invalid number for " + key + ": " + value);
+    }
+    return parsed;
+}
+
 struct Options
 {
     unsigned int index = 0;
@@ -188,6 +200,7 @@ struct Options
     bool has_width = false;
     bool has_height = false;
     auto_aim::ArmorPreprocessParams preprocess;
+    auto_aim::LightBarFilterParams light_filter;
     float exposure_us = 0.0F;
     float gain = 0.0F;
     unsigned int width = 0;
@@ -211,6 +224,14 @@ void printUsage(const char* exe)
         << "  --open-kernel N           opening kernel size, 0 disables opening, default 3\n"
         << "  --close-kernel N          closing kernel size, 0 disables closing, default 3\n"
         << "  --morph-iterations N      opening/closing iterations, default 1\n"
+        << "  --min-light-area VALUE    minimum light bar foreground area, default 5\n"
+        << "  --max-light-area VALUE    maximum light bar foreground area, default 1000000\n"
+        << "  --min-light-aspect VALUE  minimum long-side/short-side ratio, default 1.2\n"
+        << "  --max-light-aspect VALUE  maximum long-side/short-side ratio, default 50\n"
+        << "  --min-light-angle VALUE   minimum fitLine tilt from vertical, default 0\n"
+        << "  --max-light-angle VALUE   maximum fitLine tilt from vertical, default 45\n"
+        << "  --min-light-fill VALUE    minimum area/minAreaRect-area ratio, default 0.25\n"
+        << "  --max-light-fill VALUE    maximum area/minAreaRect-area ratio, default 1\n"
         << "  --exposure-us VALUE       set manual exposure time in microseconds\n"
         << "  --gain VALUE              set manual gain\n"
         << "  --width N                 set camera Width before grabbing\n"
@@ -286,6 +307,54 @@ Options parseArgs(int argc, char** argv)
         {
             options.preprocess.morph_iterations = static_cast<int>(
                 parseUInt(takeValue(i, argc, argv, arg, "--morph-iterations"), "--morph-iterations"));
+        }
+        else if (arg == "--min-light-area" || startsWith(arg, "--min-light-area="))
+        {
+            options.light_filter.min_area = parseDouble(
+                takeValue(i, argc, argv, arg, "--min-light-area"),
+                "--min-light-area");
+        }
+        else if (arg == "--max-light-area" || startsWith(arg, "--max-light-area="))
+        {
+            options.light_filter.max_area = parseDouble(
+                takeValue(i, argc, argv, arg, "--max-light-area"),
+                "--max-light-area");
+        }
+        else if (arg == "--min-light-aspect" || startsWith(arg, "--min-light-aspect="))
+        {
+            options.light_filter.min_aspect_ratio = parseDouble(
+                takeValue(i, argc, argv, arg, "--min-light-aspect"),
+                "--min-light-aspect");
+        }
+        else if (arg == "--max-light-aspect" || startsWith(arg, "--max-light-aspect="))
+        {
+            options.light_filter.max_aspect_ratio = parseDouble(
+                takeValue(i, argc, argv, arg, "--max-light-aspect"),
+                "--max-light-aspect");
+        }
+        else if (arg == "--min-light-angle" || startsWith(arg, "--min-light-angle="))
+        {
+            options.light_filter.min_line_angle_deg = parseDouble(
+                takeValue(i, argc, argv, arg, "--min-light-angle"),
+                "--min-light-angle");
+        }
+        else if (arg == "--max-light-angle" || startsWith(arg, "--max-light-angle="))
+        {
+            options.light_filter.max_line_angle_deg = parseDouble(
+                takeValue(i, argc, argv, arg, "--max-light-angle"),
+                "--max-light-angle");
+        }
+        else if (arg == "--min-light-fill" || startsWith(arg, "--min-light-fill="))
+        {
+            options.light_filter.min_fill_ratio = parseDouble(
+                takeValue(i, argc, argv, arg, "--min-light-fill"),
+                "--min-light-fill");
+        }
+        else if (arg == "--max-light-fill" || startsWith(arg, "--max-light-fill="))
+        {
+            options.light_filter.max_fill_ratio = parseDouble(
+                takeValue(i, argc, argv, arg, "--max-light-fill"),
+                "--max-light-fill");
         }
         else if (arg == "--exposure-us" || startsWith(arg, "--exposure-us="))
         {
@@ -392,6 +461,16 @@ void drawCandidateCenterLines(
             point_on_line + direction * half_length,
             cv::Scalar(0, 0, 255),
             2);
+    }
+}
+
+void drawLightBars(cv::Mat& image, const std::vector<auto_aim::LightBarCandidate>& light_bars)
+{
+    for (const auto& candidate : light_bars)
+    {
+        const auto& light = candidate.light_bar;
+        cv::line(image, light.top, light.bottom, cv::Scalar(0, 255, 255), 3);
+        cv::circle(image, light.center, 3, cv::Scalar(0, 255, 255), -1);
     }
 }
 
@@ -678,6 +757,7 @@ int run(const Options& options)
 
     CameraSession camera(selected, options);
     auto_aim::ArmorPreprocessor preprocessor(options.preprocess);
+    auto_aim::LightBarFilter light_bar_filter(options.light_filter);
     unsigned int saved = 0;
 
     while (!g_stop && (options.frames == 0 || saved < options.frames))
@@ -694,13 +774,15 @@ int run(const Options& options)
         const MV_FRAME_OUT_INFO_EX& info = buffer.frame().stFrameInfo;
         cv::Mat image = convertFrameToBgrOrGray(camera.handle(), buffer.frame());
         const auto_aim::ArmorPreprocessResult preprocess = preprocessor.process(image);
+        const auto_aim::LightBarFilterResult light_bars = light_bar_filter.filter(preprocess);
         std::cout << "frame=" << info.nFrameNum
                   << " size=" << image.cols << 'x' << image.rows
                   << " channels=" << image.channels()
                   << " pixelType=" << retHex(static_cast<int>(info.enPixelType))
                   << " contours=" << preprocess.contours.size()
                   << " rects=" << preprocess.candidate_rects.size()
-                  << " lines=" << preprocess.candidate_center_lines.size();
+                  << " lines=" << preprocess.candidate_center_lines.size()
+                  << " lights=" << light_bars.candidates.size();
 
         if (options.save)
         {
@@ -733,6 +815,7 @@ int run(const Options& options)
                 preview,
                 preprocess.candidate_rects,
                 preprocess.candidate_center_lines);
+            drawLightBars(preview, light_bars.candidates);
             cv::imshow("hik_capture", preview);
             const int key = cv::waitKey(1);
             if (key == 27 || key == 'q' || key == 'Q')
