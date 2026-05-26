@@ -43,8 +43,8 @@ public:
     explicit LightBarFilter(LightBarFilterParams params = {});
 
     LightBarFilterResult filter(
-        const ArmorPreprocessResult& preprocess,
-        LightColor color = LightColor::Unknown) const;
+        const cv::Mat& frame,
+        const ArmorPreprocessResult& preprocess) const;
 
     const LightBarFilterParams& params() const;
 

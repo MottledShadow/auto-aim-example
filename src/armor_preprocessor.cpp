@@ -102,6 +102,7 @@ ArmorPreprocessResult ArmorPreprocessor::process(const cv::Mat& frame) const
         cv::RETR_EXTERNAL,
         cv::CHAIN_APPROX_SIMPLE);
 
+    result.candidate_contours.reserve(result.contours.size());
     result.candidate_rects.reserve(result.contours.size());
     result.candidate_center_lines.reserve(result.contours.size());
     result.candidate_areas.reserve(result.contours.size());
@@ -109,6 +110,7 @@ ArmorPreprocessResult ArmorPreprocessor::process(const cv::Mat& frame) const
     {
         if (contour.size() >= 2)
         {
+            result.candidate_contours.emplace_back(contour);
             result.candidate_rects.emplace_back(cv::minAreaRect(contour));
 
             cv::Vec4f center_line;

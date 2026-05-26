@@ -64,6 +64,37 @@ bool inRange(double value, double min_value, double max_value)
     return value >= min_value && value <= max_value;
 }
 
+LightColor detectLightColor(const cv::Mat& frame, const std::vector<cv::Point>& contour)
+{
+    if (frame.empty() || frame.channels() < 3)
+    {
+        return LightColor::Unknown;
+    }
+
+    cv::Mat mask = cv::Mat::zeros(frame.size(), CV_8UC1);
+    std::vector<std::vector<cv::Point>> contours{contour};
+    cv::drawContours(mask, contours, 0, cv::Scalar(255), cv::FILLED);
+
+    const double pixel_count = static_cast<double>(cv::countNonZero(mask));
+    if (pixel_count <= 0.0)
+    {
+        return LightColor::Unknown;
+    }
+
+    const cv::Scalar mean = cv::mean(frame, mask);
+    const double blue_sum = mean[0] * pixel_count;
+    const double red_sum = mean[2] * pixel_count;
+    if (red_sum > blue_sum)
+    {
+        return LightColor::Red;
+    }
+    if (blue_sum > red_sum)
+    {
+        return LightColor::Blue;
+    }
+    return LightColor::Unknown;
+}
+
 LightBar makeLightBar(
     const cv::RotatedRect& rect,
     double line_angle_deg,
@@ -112,17 +143,20 @@ LightBarFilter::LightBarFilter(LightBarFilterParams params) : params_(params)
 }
 
 LightBarFilterResult LightBarFilter::filter(
-    const ArmorPreprocessResult& preprocess,
-    LightColor color) const
+    const cv::Mat& frame,
+    const ArmorPreprocessResult& preprocess) const
 {
     LightBarFilterResult result;
     const std::size_t count = std::min(
-        preprocess.candidate_areas.size(),
-        std::min(preprocess.candidate_rects.size(), preprocess.candidate_center_lines.size()));
+        preprocess.candidate_contours.size(),
+        std::min(
+            preprocess.candidate_areas.size(),
+            std::min(preprocess.candidate_rects.size(), preprocess.candidate_center_lines.size())));
     result.candidates.reserve(count);
 
     for (std::size_t i = 0; i < count; ++i)
     {
+        const std::vector<cv::Point>& contour = preprocess.candidate_contours[i];
         const cv::RotatedRect& rect = preprocess.candidate_rects[i];
         const cv::Vec4f& line = preprocess.candidate_center_lines[i];
         const double area = preprocess.candidate_areas[i];
@@ -161,6 +195,7 @@ LightBarFilterResult LightBarFilter::filter(
         }
 
         LightBarCandidate candidate;
+        const LightColor color = detectLightColor(frame, contour);
         candidate.light_bar = makeLightBar(rect, line_angle_deg, color);
         candidate.area = area;
         candidate.rect_area = rect_area;

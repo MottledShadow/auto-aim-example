@@ -20,6 +20,7 @@ struct ArmorPreprocessResult
     cv::Mat gray;
     cv::Mat binary;
     std::vector<std::vector<cv::Point>> contours;
+    std::vector<std::vector<cv::Point>> candidate_contours;
     std::vector<cv::RotatedRect> candidate_rects;
     std::vector<cv::Vec4f> candidate_center_lines;
     std::vector<double> candidate_areas;

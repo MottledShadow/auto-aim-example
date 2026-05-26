@@ -7,7 +7,7 @@
 - `src/hik_capture.cpp`：枚举海康 GigE/USB3 相机，打开指定相机，取流并转换成 OpenCV `cv::Mat`。
 - `include/armor_types.hpp`：装甲板识别中的基础数据结构，包含灯条 `LightBar` 和装甲板 `Armor`。
 - `include/armor_preprocessor.hpp` / `src/armor_preprocessor.cpp`：每帧图像的灰度化、亮区二值化、开闭运算、轮廓提取、最小外接矩形和中心线提取。
-- `include/light_bar_filter.hpp` / `src/light_bar_filter.cpp`：按面积、长短边比、fitLine 角度和外层轮廓填充率筛选灯条候选。
+- `include/light_bar_filter.hpp` / `src/light_bar_filter.cpp`：按面积、长短边比、fitLine 角度和外层轮廓填充率筛选灯条候选，并在轮廓 mask 内识别红/蓝颜色。
 - `Makefile`：不再写死官方 Sample 的相对路径，默认按 `/opt/MVS` 或 `MVCAM_COMMON_RUNENV` 找海康 MVS SDK。
 - 输出图像默认保存为 `captures/frame_000000.png` 这种 PNG，方便调试预处理和灯条识别。
 

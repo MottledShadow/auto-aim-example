@@ -469,8 +469,18 @@ void drawLightBars(cv::Mat& image, const std::vector<auto_aim::LightBarCandidate
     for (const auto& candidate : light_bars)
     {
         const auto& light = candidate.light_bar;
-        cv::line(image, light.top, light.bottom, cv::Scalar(0, 255, 255), 3);
-        cv::circle(image, light.center, 3, cv::Scalar(0, 255, 255), -1);
+        cv::Scalar color(0, 255, 255);
+        if (light.color == auto_aim::LightColor::Red)
+        {
+            color = cv::Scalar(0, 0, 255);
+        }
+        else if (light.color == auto_aim::LightColor::Blue)
+        {
+            color = cv::Scalar(255, 0, 0);
+        }
+
+        cv::line(image, light.top, light.bottom, color, 3);
+        cv::circle(image, light.center, 3, color, -1);
     }
 }
 
@@ -774,7 +784,7 @@ int run(const Options& options)
         const MV_FRAME_OUT_INFO_EX& info = buffer.frame().stFrameInfo;
         cv::Mat image = convertFrameToBgrOrGray(camera.handle(), buffer.frame());
         const auto_aim::ArmorPreprocessResult preprocess = preprocessor.process(image);
-        const auto_aim::LightBarFilterResult light_bars = light_bar_filter.filter(preprocess);
+        const auto_aim::LightBarFilterResult light_bars = light_bar_filter.filter(image, preprocess);
         std::cout << "frame=" << info.nFrameNum
                   << " size=" << image.cols << 'x' << image.rows
                   << " channels=" << image.channels()
