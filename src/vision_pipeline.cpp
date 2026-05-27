@@ -6,7 +6,8 @@ namespace auto_aim
 VisionPipeline::VisionPipeline(const VisionPipelineParams& params)
     : preprocessor_(params.preprocess),
       light_bar_filter_(params.light_filter),
-      armor_matcher_(params.armor_matcher)
+      armor_matcher_(params.armor_matcher),
+      pnp_solver_(params.pnp)
 {
 }
 
@@ -16,6 +17,7 @@ VisionPipelineResult VisionPipeline::process(const cv::Mat& frame) const
     result.preprocess = preprocessor_.process(frame);
     result.light_bars = light_bar_filter_.filter(frame, result.preprocess);
     result.armors = armor_matcher_.match(result.light_bars);
+    result.pnp = pnp_solver_.solve(result.armors);
     return result;
 }
 

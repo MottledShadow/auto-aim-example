@@ -6,6 +6,7 @@
 #include "armor_preprocessor.hpp"
 #include "hik_capture.hpp"
 #include "light_bar_filter.hpp"
+#include "pnp_solver.hpp"
 
 namespace auto_aim
 {
@@ -24,6 +25,7 @@ struct AppOptions
     ArmorPreprocessParams preprocess;
     LightBarFilterParams light_filter;
     ArmorMatcherParams armor_matcher;
+    PnpSolverParams pnp;
 };
 
 AppOptions parseArgs(int argc, char** argv);

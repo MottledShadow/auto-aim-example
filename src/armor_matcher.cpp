@@ -33,6 +33,10 @@ void validateParams(const ArmorMatcherParams& params)
     {
         throw std::invalid_argument("invalid center distance ratio range");
     }
+    if (params.large_armor_min_center_distance_ratio < 0.0)
+    {
+        throw std::invalid_argument("large armor threshold must be non-negative");
+    }
 }
 
 double distance(const cv::Point2f& a, const cv::Point2f& b)
@@ -84,10 +88,19 @@ bool hasLightBetween(
     return false;
 }
 
-Armor makeArmor(const LightBar& left, const LightBar& right)
+ArmorType classifyArmor(double center_distance_ratio, const ArmorMatcherParams& params)
+{
+    if (center_distance_ratio >= params.large_armor_min_center_distance_ratio)
+    {
+        return ArmorType::Large;
+    }
+    return ArmorType::Small;
+}
+
+Armor makeArmor(const LightBar& left, const LightBar& right, ArmorType type)
 {
     const cv::Point2f center = (left.center + right.center) * 0.5F;
-    return Armor(left, right, center, ArmorType::Unknown);
+    return Armor(left, right, center, type);
 }
 
 } // namespace
@@ -164,7 +177,7 @@ ArmorMatchResult ArmorMatcher::match(const LightBarFilterResult& light_bars) con
             }
 
             ArmorCandidate candidate;
-            candidate.armor = makeArmor(left, right);
+            candidate.armor = makeArmor(left, right, classifyArmor(center_distance_ratio, params_));
             candidate.light_length_ratio = length_ratio;
             candidate.light_angle_diff_deg = angle_diff;
             candidate.light_center_y_diff = center_y_diff;

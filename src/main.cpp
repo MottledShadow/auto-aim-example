@@ -115,6 +115,7 @@ int run(const auto_aim::AppOptions& options)
     pipeline_params.preprocess = options.preprocess;
     pipeline_params.light_filter = options.light_filter;
     pipeline_params.armor_matcher = options.armor_matcher;
+    pipeline_params.pnp = options.pnp;
 
     camera.open(options.index, options.camera);
     auto_aim::VisionPipeline pipeline(pipeline_params);
@@ -138,7 +139,21 @@ int run(const auto_aim::AppOptions& options)
                   << " rects=" << result.preprocess.candidate_rects.size()
                   << " lines=" << result.preprocess.candidate_center_lines.size()
                   << " lights=" << result.light_bars.candidates.size()
-                  << " armors=" << result.armors.candidates.size();
+                  << " armors=" << result.armors.candidates.size()
+                  << " poses=" << result.pnp.poses.size();
+
+        if (!result.pnp.poses.empty())
+        {
+            const cv::Mat& tvec = result.pnp.poses.front().tvec;
+            std::cout << " first_tvec=("
+                      << tvec.at<double>(0, 0) << ','
+                      << tvec.at<double>(1, 0) << ','
+                      << tvec.at<double>(2, 0) << ')';
+        }
+        else if (!result.pnp.calibration_error.empty())
+        {
+            std::cout << " pnp_error=" << result.pnp.calibration_error;
+        }
 
         if (options.save)
         {
