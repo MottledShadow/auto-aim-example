@@ -41,6 +41,7 @@ HikCapture
 - `include/debug_draw.hpp` / `src/debug_draw.cpp`：调试画面绘制。
 - `config/camera_calibration.yml`：由 Python `.npy` 标定参数转换出的 OpenCV YAML。
 - `tools/convert_calibration_npy.js`：离线转换 `.npy` 到 YAML 的小工具，不参与程序编译。
+- `CMakeLists.txt`：CMake 构建入口。
 - `src/main.cpp`：程序入口。
 
 ## 调参方式
@@ -92,24 +93,37 @@ small/large 装甲板尺寸现在只是占位值，后面按实测尺寸改 `sma
 
 ## 编译
 
-目标环境是 Linux/aarch64，并安装海康 MVS SDK 和 OpenCV 4。
+目标环境是 Linux/aarch64，并安装海康 MVS SDK、OpenCV 4 和 CMake。
 
 ```bash
-make print-config
-make
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j
 ```
 
 默认 SDK 路径为 `/opt/MVS`。如果 SDK 在其他位置：
 
 ```bash
-make MVCAM_ROOT=/path/to/MVS
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DMVCAM_ROOT=/path/to/MVS
+cmake --build build -j
 ```
 
 也可以分别指定 include 和 lib：
 
 ```bash
-make MVCAM_INCLUDE=/path/to/include MVCAM_LIB_DIR=/path/to/lib/aarch64
+cmake -S . -B build \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DMVCAM_INCLUDE_DIR=/path/to/include \
+  -DMVCAM_LIBRARY_DIR=/path/to/lib/aarch64
+cmake --build build -j
 ```
+
+如果 CMake 找不到 OpenCV，可以指定 OpenCV 的 CMake 配置目录：
+
+```bash
+cmake -S . -B build -DOpenCV_DIR=/path/to/opencv/lib/cmake/opencv4
+```
+
+CMake 会把可执行文件输出到 `build/hik_capture`，并在构建后把 `config` 目录复制到 `build/config`。
 
 ## 运行
 

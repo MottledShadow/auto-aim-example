@@ -1,0 +1,6 @@
+build/
+cmake-build-*/
+CMakeCache.txt
+CMakeFiles/
+compile_commands.json
+captures/
