@@ -25,19 +25,6 @@ void validateParams(const ArmorPreprocessParams& params)
     }
 }
 
-void applyMorphology(cv::Mat& image, int operation, int kernel_size, int iterations)
-{
-    if (kernel_size <= 0 || iterations <= 0)
-    {
-        return;
-    }
-
-    const cv::Mat kernel = cv::getStructuringElement(
-        cv::MORPH_RECT,
-        cv::Size(kernel_size, kernel_size));
-    cv::morphologyEx(image, image, operation, kernel, cv::Point(-1, -1), iterations);
-}
-
 cv::Mat toGray(const cv::Mat& frame)
 {
     if (frame.empty())
@@ -75,38 +62,55 @@ ArmorPreprocessor::ArmorPreprocessor(ArmorPreprocessParams params) : params_(par
 ArmorPreprocessResult ArmorPreprocessor::process(const cv::Mat& frame) const
 {
     ArmorPreprocessResult result;
-    result.gray = toGray(frame);
+    const cv::Mat gray = toGray(frame);
 
     cv::threshold(
-        result.gray,
+        gray,
         result.binary,
         params_.binary_threshold,
         255,
         cv::THRESH_BINARY);
 
-    applyMorphology(
-        result.binary,
-        cv::MORPH_OPEN,
-        params_.open_kernel_size,
-        params_.morph_iterations);
-    applyMorphology(
-        result.binary,
-        cv::MORPH_CLOSE,
-        params_.close_kernel_size,
-        params_.morph_iterations);
+    if (params_.open_kernel_size > 0 && params_.morph_iterations > 0)
+    {
+        const cv::Mat kernel = cv::getStructuringElement(
+            cv::MORPH_RECT,
+            cv::Size(params_.open_kernel_size, params_.open_kernel_size));
+        cv::morphologyEx(
+            result.binary,
+            result.binary,
+            cv::MORPH_OPEN,
+            kernel,
+            cv::Point(-1, -1),
+            params_.morph_iterations);
+    }
+    if (params_.close_kernel_size > 0 && params_.morph_iterations > 0)
+    {
+        const cv::Mat kernel = cv::getStructuringElement(
+            cv::MORPH_RECT,
+            cv::Size(params_.close_kernel_size, params_.close_kernel_size));
+        cv::morphologyEx(
+            result.binary,
+            result.binary,
+            cv::MORPH_CLOSE,
+            kernel,
+            cv::Point(-1, -1),
+            params_.morph_iterations);
+    }
 
+    std::vector<std::vector<cv::Point>> contours;
     cv::Mat contour_input = result.binary.clone();
     cv::findContours(
         contour_input,
-        result.contours,
+        contours,
         cv::RETR_EXTERNAL,
         cv::CHAIN_APPROX_SIMPLE);
 
-    result.candidate_contours.reserve(result.contours.size());
-    result.candidate_rects.reserve(result.contours.size());
-    result.candidate_center_lines.reserve(result.contours.size());
-    result.candidate_areas.reserve(result.contours.size());
-    for (const auto& contour : result.contours)
+    result.candidate_contours.reserve(contours.size());
+    result.candidate_rects.reserve(contours.size());
+    result.candidate_center_lines.reserve(contours.size());
+    result.candidate_areas.reserve(contours.size());
+    for (const auto& contour : contours)
     {
         if (contour.size() >= 2)
         {
@@ -121,11 +125,6 @@ ArmorPreprocessResult ArmorPreprocessor::process(const cv::Mat& frame) const
     }
 
     return result;
-}
-
-const ArmorPreprocessParams& ArmorPreprocessor::params() const
-{
-    return params_;
 }
 
 } // namespace auto_aim

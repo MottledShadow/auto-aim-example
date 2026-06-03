@@ -26,10 +26,6 @@ struct LightBarCandidate
 {
     LightBar light_bar;
     double area = 0.0;
-    double rect_area = 0.0;
-    double aspect_ratio = 0.0;
-    double line_angle_deg = 0.0;
-    double fill_ratio = 0.0;
 };
 
 struct LightBarFilterResult
@@ -45,8 +41,6 @@ public:
     LightBarFilterResult filter(
         const cv::Mat& frame,
         const ArmorPreprocessResult& preprocess) const;
-
-    const LightBarFilterParams& params() const;
 
 private:
     LightBarFilterParams params_;

@@ -95,7 +95,7 @@ ArmorType classifyArmor(double center_distance_ratio, const ArmorMatcherParams& 
 Armor makeArmor(const LightBar& left, const LightBar& right, ArmorType type)
 {
     const cv::Point2f center = (left.center + right.center) * 0.5F;
-    return Armor(left, right, center, type);
+    return Armor{left, right, center, type};
 }
 
 } // namespace
@@ -148,19 +148,10 @@ ArmorMatchResult ArmorMatcher::match(const LightBarFilterResult& light_bars) con
                 std::hypot(left.center.x - right.center.x, left.center.y - right.center.y) /
                 average_height;
 
-            if (length_ratio > params_.max_light_length_ratio)
-            {
-                continue;
-            }
-            if (angle_diff > params_.max_light_angle_diff_deg)
-            {
-                continue;
-            }
-            if (center_y_diff > params_.max_light_center_y_diff)
-            {
-                continue;
-            }
-            if (center_distance_ratio < params_.min_center_distance_ratio ||
+            if (length_ratio > params_.max_light_length_ratio ||
+                angle_diff > params_.max_light_angle_diff_deg ||
+                center_y_diff > params_.max_light_center_y_diff ||
+                center_distance_ratio < params_.min_center_distance_ratio ||
                 center_distance_ratio > params_.max_center_distance_ratio)
             {
                 continue;
@@ -174,20 +165,11 @@ ArmorMatchResult ArmorMatcher::match(const LightBarFilterResult& light_bars) con
 
             ArmorCandidate candidate;
             candidate.armor = makeArmor(left, right, classifyArmor(center_distance_ratio, params_));
-            candidate.light_length_ratio = length_ratio;
-            candidate.light_angle_diff_deg = angle_diff;
-            candidate.light_center_y_diff = center_y_diff;
-            candidate.center_distance_ratio = center_distance_ratio;
             result.candidates.emplace_back(candidate);
         }
     }
 
     return result;
-}
-
-const ArmorMatcherParams& ArmorMatcher::params() const
-{
-    return params_;
 }
 
 } // namespace auto_aim

@@ -39,31 +39,16 @@ void warnOnError(int ret, const std::string& what)
     }
 }
 
-std::string safeText(const char* text, std::size_t max_len)
+template <typename CharT, std::size_t N>
+std::string safeText(const CharT (&text)[N])
 {
+    const char* chars = reinterpret_cast<const char*>(text);
     std::size_t len = 0;
-    while (len < max_len && text[len] != '\0')
+    while (len < N && chars[len] != '\0')
     {
         ++len;
     }
-    return std::string(text, len);
-}
-
-std::string safeText(const unsigned char* text, std::size_t max_len)
-{
-    return safeText(reinterpret_cast<const char*>(text), max_len);
-}
-
-template <std::size_t N>
-std::string safeText(const char (&text)[N])
-{
-    return safeText(text, N);
-}
-
-template <std::size_t N>
-std::string safeText(const unsigned char (&text)[N])
-{
-    return safeText(text, N);
+    return std::string(chars, len);
 }
 
 std::string currentIp(unsigned int ip)
@@ -76,25 +61,10 @@ std::string currentIp(unsigned int ip)
     return os.str();
 }
 
-unsigned int frameWidth(const MV_FRAME_OUT_INFO_EX& info)
-{
-    return info.nExtendWidth != 0 ? info.nExtendWidth : info.nWidth;
-}
-
-unsigned int frameHeight(const MV_FRAME_OUT_INFO_EX& info)
-{
-    return info.nExtendHeight != 0 ? info.nExtendHeight : info.nHeight;
-}
-
 HikDeviceInfo buildDeviceInfo(unsigned int index, MV_CC_DEVICE_INFO* info)
 {
     HikDeviceInfo device;
     device.index = index;
-    if (info == nullptr)
-    {
-        device.transport = "Null";
-        return device;
-    }
 
     device.accessible = MV_CC_IsDeviceAccessible(info, MV_ACCESS_Exclusive);
 
@@ -126,8 +96,8 @@ HikDeviceInfo buildDeviceInfo(unsigned int index, MV_CC_DEVICE_INFO* info)
 cv::Mat convertFrameToBgrOrGray(void* handle, const MV_FRAME_OUT& frame)
 {
     const MV_FRAME_OUT_INFO_EX& info = frame.stFrameInfo;
-    const unsigned int width = frameWidth(info);
-    const unsigned int height = frameHeight(info);
+    const unsigned int width = info.nExtendWidth != 0 ? info.nExtendWidth : info.nWidth;
+    const unsigned int height = info.nExtendHeight != 0 ? info.nExtendHeight : info.nHeight;
 
     if (width == 0 || height == 0 || frame.pBufAddr == nullptr)
     {

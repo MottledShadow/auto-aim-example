@@ -17,9 +17,7 @@ struct ArmorPreprocessParams
 
 struct ArmorPreprocessResult
 {
-    cv::Mat gray;
     cv::Mat binary;
-    std::vector<std::vector<cv::Point>> contours;
     std::vector<std::vector<cv::Point>> candidate_contours;
     std::vector<cv::RotatedRect> candidate_rects;
     std::vector<cv::Vec4f> candidate_center_lines;
@@ -32,8 +30,6 @@ public:
     explicit ArmorPreprocessor(ArmorPreprocessParams params = {});
 
     ArmorPreprocessResult process(const cv::Mat& frame) const;
-
-    const ArmorPreprocessParams& params() const;
 
 private:
     ArmorPreprocessParams params_;

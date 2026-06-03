@@ -98,16 +98,7 @@ PnpSolver::PnpSolver(PnpSolverParams params) : params_(std::move(params))
 
     try
     {
-        if (!params_.camera_matrix.empty())
-        {
-            camera_matrix_ = normalizeCameraMatrix(params_.camera_matrix);
-        }
-        if (!params_.dist_coeffs.empty())
-        {
-            dist_coeffs_ = normalizeDistCoeffs(params_.dist_coeffs);
-        }
-
-        if (camera_matrix_.empty() && !params_.calibration_file.empty())
+        if (!params_.calibration_file.empty())
         {
             loadCalibrationFile(params_.calibration_file, camera_matrix_, dist_coeffs_);
             camera_matrix_ = normalizeCameraMatrix(camera_matrix_);
@@ -125,9 +116,8 @@ PnpSolver::PnpSolver(PnpSolverParams params) : params_(std::move(params))
 PnpSolveResult PnpSolver::solve(const ArmorMatchResult& armors) const
 {
     PnpSolveResult result;
-    result.calibration_ready = calibrationReady();
     result.calibration_error = calibration_error_;
-    if (!result.calibration_ready)
+    if (camera_matrix_.empty())
     {
         return result;
     }
@@ -157,28 +147,10 @@ PnpSolveResult PnpSolver::solve(const ArmorMatchResult& armors) const
         pose.armor = candidate.armor;
         pose.rvec = rvec;
         pose.tvec = tvec;
-        pose.distance = cv::norm(tvec);
-        pose.image_points = image_points;
-        pose.object_points = object_points;
         result.poses.emplace_back(std::move(pose));
     }
 
     return result;
-}
-
-bool PnpSolver::calibrationReady() const
-{
-    return !camera_matrix_.empty();
-}
-
-const std::string& PnpSolver::calibrationError() const
-{
-    return calibration_error_;
-}
-
-const PnpSolverParams& PnpSolver::params() const
-{
-    return params_;
 }
 
 } // namespace auto_aim

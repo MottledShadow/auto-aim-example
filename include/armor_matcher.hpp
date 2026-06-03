@@ -23,10 +23,6 @@ struct ArmorMatcherParams
 struct ArmorCandidate
 {
     Armor armor;
-    double light_length_ratio = 0.0;
-    double light_angle_diff_deg = 0.0;
-    double light_center_y_diff = 0.0;
-    double center_distance_ratio = 0.0;
 };
 
 struct ArmorMatchResult
@@ -40,8 +36,6 @@ public:
     explicit ArmorMatcher(ArmorMatcherParams params = {});
 
     ArmorMatchResult match(const LightBarFilterResult& light_bars) const;
-
-    const ArmorMatcherParams& params() const;
 
 private:
     ArmorMatcherParams params_;

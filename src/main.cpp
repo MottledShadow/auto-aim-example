@@ -62,13 +62,6 @@ std::string framePath(const std::string& output_dir, unsigned int saved_index)
     return os.str();
 }
 
-std::string pixelTypeHex(int pixel_type)
-{
-    std::ostringstream os;
-    os << "0x" << std::hex << std::uppercase << pixel_type;
-    return os.str();
-}
-
 void printDevices(const std::vector<auto_aim::HikDeviceInfo>& devices)
 {
     for (const auto& device : devices)
@@ -135,8 +128,8 @@ int run(const auto_aim::AppOptions& options)
                   << " hardwareTimestamp=" << frame.hardware_timestamp
                   << " size=" << frame.image.cols << 'x' << frame.image.rows
                   << " channels=" << frame.image.channels()
-                  << " pixelType=" << pixelTypeHex(frame.pixel_type)
-                  << " contours=" << result.preprocess.contours.size()
+                  << " pixelType=0x" << std::hex << std::uppercase << frame.pixel_type
+                  << std::dec << std::nouppercase
                   << " rects=" << result.preprocess.candidate_rects.size()
                   << " lines=" << result.preprocess.candidate_center_lines.size()
                   << " lights=" << result.light_bars.candidates.size()

@@ -14,11 +14,10 @@ set(MVCAM_ROOT "/opt/MVS" CACHE PATH "Hikrobot MVS SDK root directory")
 set(MVCAM_INCLUDE_DIR "${MVCAM_ROOT}/include" CACHE PATH "Hikrobot MVS SDK include directory")
 
 if(DEFINED ENV{MVCAM_COMMON_RUNENV} AND NOT "$ENV{MVCAM_COMMON_RUNENV}" STREQUAL "")
-    set(_MVCAM_DEFAULT_LIBRARY_DIR "$ENV{MVCAM_COMMON_RUNENV}/${CMAKE_SYSTEM_PROCESSOR}")
+    set(MVCAM_LIBRARY_DIR "$ENV{MVCAM_COMMON_RUNENV}/${CMAKE_SYSTEM_PROCESSOR}" CACHE PATH "Hikrobot MVS SDK library directory")
 else()
-    set(_MVCAM_DEFAULT_LIBRARY_DIR "${MVCAM_ROOT}/lib/${CMAKE_SYSTEM_PROCESSOR}")
+    set(MVCAM_LIBRARY_DIR "${MVCAM_ROOT}/lib/${CMAKE_SYSTEM_PROCESSOR}" CACHE PATH "Hikrobot MVS SDK library directory")
 endif()
-set(MVCAM_LIBRARY_DIR "${_MVCAM_DEFAULT_LIBRARY_DIR}" CACHE PATH "Hikrobot MVS SDK library directory")
 
 find_library(
     MVCAM_LIBRARY
@@ -32,11 +31,6 @@ if(NOT MVCAM_LIBRARY)
         "Cannot find MvCameraControl in ${MVCAM_LIBRARY_DIR}. "
         "Set MVCAM_ROOT or MVCAM_LIBRARY_DIR when configuring CMake.")
 endif()
-
-message(STATUS "OpenCV_VERSION=${OpenCV_VERSION}")
-message(STATUS "MVCAM_INCLUDE_DIR=${MVCAM_INCLUDE_DIR}")
-message(STATUS "MVCAM_LIBRARY_DIR=${MVCAM_LIBRARY_DIR}")
-message(STATUS "MVCAM_LIBRARY=${MVCAM_LIBRARY}")
 
 add_executable(${TARGET_NAME}
     src/main.cpp

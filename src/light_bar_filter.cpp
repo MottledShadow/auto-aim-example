@@ -35,16 +35,6 @@ void validateParams(const LightBarFilterParams& params)
     }
 }
 
-double edgeLength(const cv::Point2f& a, const cv::Point2f& b)
-{
-    return std::hypot(a.x - b.x, a.y - b.y);
-}
-
-cv::Point2f midpoint(const cv::Point2f& a, const cv::Point2f& b)
-{
-    return (a + b) * 0.5F;
-}
-
 double lineAngleFromVerticalDeg(const cv::Vec4f& line)
 {
     const double vx = static_cast<double>(line[0]);
@@ -75,20 +65,17 @@ LightColor detectLightColor(const cv::Mat& frame, const std::vector<cv::Point>& 
     std::vector<std::vector<cv::Point>> contours{contour};
     cv::drawContours(mask, contours, 0, cv::Scalar(255), cv::FILLED);
 
-    const double pixel_count = static_cast<double>(cv::countNonZero(mask));
-    if (pixel_count <= 0.0)
+    if (cv::countNonZero(mask) <= 0)
     {
         return LightColor::Unknown;
     }
 
     const cv::Scalar mean = cv::mean(frame, mask);
-    const double blue_sum = mean[0] * pixel_count;
-    const double red_sum = mean[2] * pixel_count;
-    if (red_sum > blue_sum)
+    if (mean[2] > mean[0])
     {
         return LightColor::Red;
     }
-    if (blue_sum > red_sum)
+    if (mean[0] > mean[2])
     {
         return LightColor::Blue;
     }
@@ -109,15 +96,17 @@ LightBar makeLightBar(
     cv::Point2f p1;
     cv::Point2f p2;
 
-    if (edgeLength(vertices[0], vertices[1]) <= edgeLength(vertices[1], vertices[2]))
+    const double edge01 = std::hypot(vertices[0].x - vertices[1].x, vertices[0].y - vertices[1].y);
+    const double edge12 = std::hypot(vertices[1].x - vertices[2].x, vertices[1].y - vertices[2].y);
+    if (edge01 <= edge12)
     {
-        p1 = midpoint(vertices[0], vertices[1]);
-        p2 = midpoint(vertices[2], vertices[3]);
+        p1 = (vertices[0] + vertices[1]) * 0.5F;
+        p2 = (vertices[2] + vertices[3]) * 0.5F;
     }
     else
     {
-        p1 = midpoint(vertices[1], vertices[2]);
-        p2 = midpoint(vertices[3], vertices[0]);
+        p1 = (vertices[1] + vertices[2]) * 0.5F;
+        p2 = (vertices[3] + vertices[0]) * 0.5F;
     }
 
     if (p1.y > p2.y)
@@ -125,14 +114,14 @@ LightBar makeLightBar(
         std::swap(p1, p2);
     }
 
-    return LightBar(
+    return LightBar{
         color,
         p1,
         p2,
         center,
         length,
         width,
-        static_cast<float>(line_angle_deg));
+        static_cast<float>(line_angle_deg)};
 }
 
 } // namespace
@@ -177,19 +166,10 @@ LightBarFilterResult LightBarFilter::filter(
         const double line_angle_deg = lineAngleFromVerticalDeg(line);
         const double fill_ratio = std::clamp(area / rect_area, 0.0, 1.0);
 
-        if (!inRange(area, params_.min_area, params_.max_area))
-        {
-            continue;
-        }
-        if (!inRange(aspect_ratio, params_.min_aspect_ratio, params_.max_aspect_ratio))
-        {
-            continue;
-        }
-        if (!inRange(line_angle_deg, params_.min_line_angle_deg, params_.max_line_angle_deg))
-        {
-            continue;
-        }
-        if (!inRange(fill_ratio, params_.min_fill_ratio, params_.max_fill_ratio))
+        if (!inRange(area, params_.min_area, params_.max_area) ||
+            !inRange(aspect_ratio, params_.min_aspect_ratio, params_.max_aspect_ratio) ||
+            !inRange(line_angle_deg, params_.min_line_angle_deg, params_.max_line_angle_deg) ||
+            !inRange(fill_ratio, params_.min_fill_ratio, params_.max_fill_ratio))
         {
             continue;
         }
@@ -198,19 +178,10 @@ LightBarFilterResult LightBarFilter::filter(
         const LightColor color = detectLightColor(frame, contour);
         candidate.light_bar = makeLightBar(rect, line_angle_deg, color);
         candidate.area = area;
-        candidate.rect_area = rect_area;
-        candidate.aspect_ratio = aspect_ratio;
-        candidate.line_angle_deg = line_angle_deg;
-        candidate.fill_ratio = fill_ratio;
         result.candidates.emplace_back(candidate);
     }
 
     return result;
-}
-
-const LightBarFilterParams& LightBarFilter::params() const
-{
-    return params_;
 }
 
 } // namespace auto_aim

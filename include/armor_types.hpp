@@ -29,26 +29,6 @@ public:
     float length = 0.0F;
     float width = 0.0F;
     float angle = 0.0F;
-
-    LightBar() = default;
-
-    LightBar(
-        LightColor color,
-        const cv::Point2f& top,
-        const cv::Point2f& bottom,
-        const cv::Point2f& center,
-        float length,
-        float width,
-        float angle)
-        : color(color),
-          top(top),
-          bottom(bottom),
-          center(center),
-          length(length),
-          width(width),
-          angle(angle)
-    {
-    }
 };
 
 class Armor
@@ -58,20 +38,6 @@ public:
     LightBar right_light;
     cv::Point2f center;
     ArmorType type = ArmorType::Unknown;
-
-    Armor() = default;
-
-    Armor(
-        const LightBar& left_light,
-        const LightBar& right_light,
-        const cv::Point2f& center,
-        ArmorType type)
-        : left_light(left_light),
-          right_light(right_light),
-          center(center),
-          type(type)
-    {
-    }
 };
 
 } // namespace auto_aim

@@ -14,32 +14,6 @@ namespace auto_aim
 namespace
 {
 
-cv::Point candidateLabelAnchor(
-    const cv::Mat& image,
-    const std::vector<cv::Point2f>& points,
-    const cv::Size& text_size,
-    int baseline)
-{
-    float min_x = points.front().x;
-    float min_y = points.front().y;
-    for (const auto& point : points)
-    {
-        min_x = std::min(min_x, point.x);
-        min_y = std::min(min_y, point.y);
-    }
-
-    const int max_x = std::max(0, image.cols - text_size.width - 4);
-    int x = std::max(0, std::min(max_x, cvRound(min_x)));
-    int y = cvRound(min_y) - 4;
-
-    if (y - text_size.height - baseline < 0)
-    {
-        y = cvRound(min_y) + text_size.height + baseline + 4;
-    }
-    y = std::max(text_size.height + baseline, std::min(image.rows - 2, y));
-    return cv::Point(x, y);
-}
-
 std::vector<cv::Point2f> lightBarBoxPoints(const LightBar& light)
 {
     const cv::Point2f axis = light.bottom - light.top;
@@ -57,20 +31,6 @@ std::vector<cv::Point2f> lightBarBoxPoints(const LightBar& light)
         light.bottom + half_width,
         light.bottom - half_width,
     };
-}
-
-void drawTextWithBackground(
-    cv::Mat& image,
-    const std::string& text,
-    const cv::Point& anchor,
-    const cv::Size& text_size,
-    int baseline,
-    const cv::Scalar& color)
-{
-    const cv::Point top_left(anchor.x - 2, anchor.y - text_size.height - baseline - 2);
-    const cv::Point bottom_right(anchor.x + text_size.width + 2, anchor.y + baseline + 2);
-    cv::rectangle(image, top_left, bottom_right, cv::Scalar(0, 0, 0), -1);
-    cv::putText(image, text, anchor, cv::FONT_HERSHEY_SIMPLEX, 0.45, color, 1, cv::LINE_AA);
 }
 
 void drawFilteredLightBarBoxes(
@@ -106,13 +66,29 @@ void drawFilteredLightBarBoxes(
         int baseline = 0;
         const cv::Size text_size =
             cv::getTextSize(text, cv::FONT_HERSHEY_SIMPLEX, 0.45, 1, &baseline);
-        drawTextWithBackground(
-            image,
-            text,
-            candidateLabelAnchor(image, points, text_size, baseline),
-            text_size,
-            baseline,
-            color);
+
+        float min_x = points.front().x;
+        float min_y = points.front().y;
+        for (const auto& point : points)
+        {
+            min_x = std::min(min_x, point.x);
+            min_y = std::min(min_y, point.y);
+        }
+
+        const int max_x = std::max(0, image.cols - text_size.width - 4);
+        int x = std::max(0, std::min(max_x, cvRound(min_x)));
+        int y = cvRound(min_y) - 4;
+        if (y - text_size.height - baseline < 0)
+        {
+            y = cvRound(min_y) + text_size.height + baseline + 4;
+        }
+        y = std::max(text_size.height + baseline, std::min(image.rows - 2, y));
+
+        const cv::Point anchor(x, y);
+        const cv::Point top_left(anchor.x - 2, anchor.y - text_size.height - baseline - 2);
+        const cv::Point bottom_right(anchor.x + text_size.width + 2, anchor.y + baseline + 2);
+        cv::rectangle(image, top_left, bottom_right, cv::Scalar(0, 0, 0), -1);
+        cv::putText(image, text, anchor, cv::FONT_HERSHEY_SIMPLEX, 0.45, color, 1, cv::LINE_AA);
     }
 }
 
