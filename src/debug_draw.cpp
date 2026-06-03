@@ -1,6 +1,7 @@
 #include "debug_draw.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <iomanip>
 #include <sstream>
 #include <string>
@@ -20,21 +21,31 @@ std::string areaLabel(double area)
     return os.str();
 }
 
+cv::Scalar lightBarDebugColor(LightColor color)
+{
+    if (color == LightColor::Red)
+    {
+        return cv::Scalar(0, 0, 255);
+    }
+    if (color == LightColor::Blue)
+    {
+        return cv::Scalar(255, 0, 0);
+    }
+    return cv::Scalar(0, 255, 255);
+}
+
 cv::Point candidateLabelAnchor(
     const cv::Mat& image,
-    const cv::RotatedRect& rect,
+    const std::vector<cv::Point2f>& points,
     const cv::Size& text_size,
     int baseline)
 {
-    cv::Point2f vertices[4];
-    rect.points(vertices);
-
-    float min_x = vertices[0].x;
-    float min_y = vertices[0].y;
-    for (int i = 1; i < 4; ++i)
+    float min_x = points.front().x;
+    float min_y = points.front().y;
+    for (const auto& point : points)
     {
-        min_x = std::min(min_x, vertices[i].x);
-        min_y = std::min(min_y, vertices[i].y);
+        min_x = std::min(min_x, point.x);
+        min_y = std::min(min_y, point.y);
     }
 
     const int max_x = std::max(0, image.cols - text_size.width - 4);
@@ -47,6 +58,25 @@ cv::Point candidateLabelAnchor(
     }
     y = std::max(text_size.height + baseline, std::min(image.rows - 2, y));
     return cv::Point(x, y);
+}
+
+std::vector<cv::Point2f> lightBarBoxPoints(const LightBar& light)
+{
+    const cv::Point2f axis = light.bottom - light.top;
+    const float length = std::hypot(axis.x, axis.y);
+    if (length <= 1e-6F || light.width <= 0.0F)
+    {
+        return {};
+    }
+
+    const cv::Point2f normal(-axis.y / length, axis.x / length);
+    const cv::Point2f half_width = normal * (light.width * 0.5F);
+    return {
+        light.top - half_width,
+        light.top + half_width,
+        light.bottom + half_width,
+        light.bottom - half_width,
+    };
 }
 
 void drawTextWithBackground(
@@ -63,36 +93,35 @@ void drawTextWithBackground(
     cv::putText(image, text, anchor, cv::FONT_HERSHEY_SIMPLEX, 0.45, color, 1, cv::LINE_AA);
 }
 
-void drawCandidateRects(
+void drawFilteredLightBarBoxes(
     cv::Mat& image,
-    const std::vector<cv::RotatedRect>& rects,
-    const std::vector<double>& areas)
+    const std::vector<LightBarCandidate>& light_bars)
 {
-    const cv::Scalar color(0, 255, 0);
-    for (std::size_t i = 0; i < rects.size(); ++i)
+    for (const auto& candidate : light_bars)
     {
-        const auto& rect = rects[i];
-        cv::Point2f vertices[4];
-        rect.points(vertices);
-        for (int i = 0; i < 4; ++i)
+        const cv::Scalar color = lightBarDebugColor(candidate.light_bar.color);
+        const std::vector<cv::Point2f> points = lightBarBoxPoints(candidate.light_bar);
+        if (points.empty())
         {
-            cv::line(image, vertices[i], vertices[(i + 1) % 4], color, 2);
+            continue;
         }
 
-        if (i < areas.size())
+        for (std::size_t i = 0; i < points.size(); ++i)
         {
-            const std::string text = areaLabel(areas[i]);
-            int baseline = 0;
-            const cv::Size text_size =
-                cv::getTextSize(text, cv::FONT_HERSHEY_SIMPLEX, 0.45, 1, &baseline);
-            drawTextWithBackground(
-                image,
-                text,
-                candidateLabelAnchor(image, rect, text_size, baseline),
-                text_size,
-                baseline,
-                color);
+            cv::line(image, points[i], points[(i + 1) % points.size()], color, 2);
         }
+
+        const std::string text = areaLabel(candidate.area);
+        int baseline = 0;
+        const cv::Size text_size =
+            cv::getTextSize(text, cv::FONT_HERSHEY_SIMPLEX, 0.45, 1, &baseline);
+        drawTextWithBackground(
+            image,
+            text,
+            candidateLabelAnchor(image, points, text_size, baseline),
+            text_size,
+            baseline,
+            color);
     }
 }
 
@@ -115,26 +144,6 @@ void drawCandidateCenterLines(
             point_on_line + direction * half_length,
             cv::Scalar(0, 0, 255),
             2);
-    }
-}
-
-void drawLightBars(cv::Mat& image, const std::vector<LightBarCandidate>& light_bars)
-{
-    for (const auto& candidate : light_bars)
-    {
-        const auto& light = candidate.light_bar;
-        cv::Scalar color(0, 255, 255);
-        if (light.color == LightColor::Red)
-        {
-            color = cv::Scalar(0, 0, 255);
-        }
-        else if (light.color == LightColor::Blue)
-        {
-            color = cv::Scalar(255, 0, 0);
-        }
-
-        cv::line(image, light.top, light.bottom, color, 3);
-        cv::circle(image, light.center, 3, color, -1);
     }
 }
 
@@ -182,9 +191,8 @@ cv::Mat makeDebugPreview(
         preview = frame.clone();
     }
 
-    drawCandidateRects(preview, preprocess.candidate_rects, preprocess.candidate_areas);
+    drawFilteredLightBarBoxes(preview, light_bars.candidates);
     drawCandidateCenterLines(preview, preprocess.candidate_rects, preprocess.candidate_center_lines);
-    drawLightBars(preview, light_bars.candidates);
     drawArmors(preview, armors.candidates);
     return preview;
 }
