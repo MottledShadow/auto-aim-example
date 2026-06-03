@@ -39,11 +39,6 @@ void validateParams(const ArmorMatcherParams& params)
     }
 }
 
-double distance(const cv::Point2f& a, const cv::Point2f& b)
-{
-    return std::hypot(a.x - b.x, a.y - b.y);
-}
-
 bool sameKnownColor(const LightBar& a, const LightBar& b)
 {
     return a.color != LightColor::Unknown && a.color == b.color;
@@ -150,7 +145,8 @@ ArmorMatchResult ArmorMatcher::match(const LightBarFilterResult& light_bars) con
             }
 
             const double center_distance_ratio =
-                distance(left.center, right.center) / average_height;
+                std::hypot(left.center.x - right.center.x, left.center.y - right.center.y) /
+                average_height;
 
             if (length_ratio > params_.max_light_length_ratio)
             {

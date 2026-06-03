@@ -14,26 +14,6 @@ namespace auto_aim
 namespace
 {
 
-std::string areaLabel(double area)
-{
-    std::ostringstream os;
-    os << "A=" << std::fixed << std::setprecision(0) << area;
-    return os.str();
-}
-
-cv::Scalar lightBarDebugColor(LightColor color)
-{
-    if (color == LightColor::Red)
-    {
-        return cv::Scalar(0, 0, 255);
-    }
-    if (color == LightColor::Blue)
-    {
-        return cv::Scalar(255, 0, 0);
-    }
-    return cv::Scalar(0, 255, 255);
-}
-
 cv::Point candidateLabelAnchor(
     const cv::Mat& image,
     const std::vector<cv::Point2f>& points,
@@ -99,7 +79,16 @@ void drawFilteredLightBarBoxes(
 {
     for (const auto& candidate : light_bars)
     {
-        const cv::Scalar color = lightBarDebugColor(candidate.light_bar.color);
+        cv::Scalar color(0, 255, 255);
+        if (candidate.light_bar.color == LightColor::Red)
+        {
+            color = cv::Scalar(0, 0, 255);
+        }
+        else if (candidate.light_bar.color == LightColor::Blue)
+        {
+            color = cv::Scalar(255, 0, 0);
+        }
+
         const std::vector<cv::Point2f> points = lightBarBoxPoints(candidate.light_bar);
         if (points.empty())
         {
@@ -111,7 +100,9 @@ void drawFilteredLightBarBoxes(
             cv::line(image, points[i], points[(i + 1) % points.size()], color, 2);
         }
 
-        const std::string text = areaLabel(candidate.area);
+        std::ostringstream os;
+        os << "A=" << std::fixed << std::setprecision(0) << candidate.area;
+        const std::string text = os.str();
         int baseline = 0;
         const cv::Size text_size =
             cv::getTextSize(text, cv::FONT_HERSHEY_SIMPLEX, 0.45, 1, &baseline);

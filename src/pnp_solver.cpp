@@ -66,7 +66,6 @@ void loadCalibrationFile(
 
 std::vector<cv::Point2f> makeImagePoints(const Armor& armor)
 {
-    // This order must match makeObjectPoints().
     return {
         armor.left_light.top,
         armor.right_light.top,
@@ -83,7 +82,6 @@ std::vector<cv::Point3f> makeObjectPoints(const Armor& armor, const PnpSolverPar
     const float half_width = width * 0.5F;
     const float half_height = height * 0.5F;
 
-    // Object coordinates are centered on the armor plate.
     return {
         {-half_width, -half_height, 0.0F},
         { half_width, -half_height, 0.0F},
