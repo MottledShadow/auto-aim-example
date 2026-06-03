@@ -156,7 +156,7 @@ CMake 会把可执行文件输出到 `build/hik_capture`，并在构建后把 `c
 每帧会在终端打印：
 
 ```text
-frame=<id> size=<w>x<h> channels=<n> pixelType=<hex> contours=<n> rects=<n> lines=<n> lights=<n> armors=<n> poses=<n>
+frame=<id> hardwareTimestamp=<raw> size=<w>x<h> channels=<n> pixelType=<hex> contours=<n> rects=<n> lines=<n> lights=<n> armors=<n> poses=<n>
 ```
 
 如果成功解出至少一个位姿，还会打印第一块装甲板的平移向量：

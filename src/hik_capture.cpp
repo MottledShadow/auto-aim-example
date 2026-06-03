@@ -285,6 +285,9 @@ struct HikCapture::Impl
         const MV_FRAME_OUT_INFO_EX& info = buffer.frame().stFrameInfo;
         output.image = convertFrameToBgrOrGray(handle, buffer.frame());
         output.frame_number = info.nFrameNum;
+        output.hardware_timestamp =
+            (static_cast<std::uint64_t>(info.nDevTimeStampHigh) << 32U) |
+            static_cast<std::uint64_t>(info.nDevTimeStampLow);
         output.pixel_type = static_cast<int>(info.enPixelType);
         return true;
     }

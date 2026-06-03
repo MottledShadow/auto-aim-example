@@ -132,6 +132,7 @@ int run(const auto_aim::AppOptions& options)
 
         const auto_aim::VisionPipelineResult result = pipeline.process(frame.image);
         std::cout << "frame=" << frame.frame_number
+                  << " hardwareTimestamp=" << frame.hardware_timestamp
                   << " size=" << frame.image.cols << 'x' << frame.image.rows
                   << " channels=" << frame.image.channels()
                   << " pixelType=" << pixelTypeHex(frame.pixel_type)

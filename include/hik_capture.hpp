@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -36,6 +37,7 @@ struct HikFrame
 {
     cv::Mat image;
     unsigned int frame_number = 0;
+    std::uint64_t hardware_timestamp = 0;
     int pixel_type = 0;
 };
 
