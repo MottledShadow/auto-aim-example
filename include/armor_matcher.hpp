@@ -12,11 +12,11 @@ namespace auto_aim
 
 struct ArmorMatcherParams
 {
-    double max_light_length_ratio = 2.0;
-    double max_light_angle_diff_deg = 10.0;
-    double max_light_center_y_diff = 40.0;
-    double min_center_distance_ratio = 0.5;
-    double max_center_distance_ratio = 8.0;
+    double max_light_length_ratio = 3.0;
+    double max_light_angle_diff_deg = 20.0;
+    double max_light_center_y_diff = 400.0;
+    double min_center_distance_ratio = 1.0;
+    double max_center_distance_ratio = 5.0;
     double large_armor_min_center_distance_ratio = 3.2;
 };
 

@@ -9,9 +9,9 @@ namespace auto_aim
 
 struct ArmorPreprocessParams
 {
-    int binary_threshold = 180;
-    int open_kernel_size = 3;
-    int close_kernel_size = 3;
+    int binary_threshold = 75;
+    int open_kernel_size = 5;
+    int close_kernel_size = 5;
     int morph_iterations = 1;
 };
 

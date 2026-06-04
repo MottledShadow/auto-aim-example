@@ -13,8 +13,8 @@ namespace auto_aim
 
 struct PnpSolverParams
 {
-    double small_armor_width = 135.0;
-    double small_armor_height = 55.0;
+    double small_armor_width = 130.0;
+    double small_armor_height = 60.0;
     double large_armor_width = 230.0;
     double large_armor_height = 55.0;
 
