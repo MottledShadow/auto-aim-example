@@ -1,13 +1,11 @@
 #include <atomic>
-#include <cerrno>
 #include <csignal>
+#include <filesystem>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
 #include <string>
-#include <sys/stat.h>
-#include <sys/types.h>
 
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgcodecs.hpp>
@@ -33,33 +31,18 @@ void ensureDirectory(const std::string& path)
     {
         throw std::runtime_error("output directory cannot be empty");
     }
-
-    struct stat st = {};
-    if (::stat(path.c_str(), &st) == 0)
+    if (std::filesystem::exists(path) && !std::filesystem::is_directory(path))
     {
-        if (!S_ISDIR(st.st_mode))
-        {
-            throw std::runtime_error("output path exists but is not a directory: " + path);
-        }
-        return;
+        throw std::runtime_error("output path exists but is not a directory: " + path);
     }
-
-    if (errno != ENOENT)
-    {
-        throw std::runtime_error("cannot inspect output path: " + path);
-    }
-
-    if (::mkdir(path.c_str(), 0755) != 0)
-    {
-        throw std::runtime_error("cannot create output directory: " + path);
-    }
+    std::filesystem::create_directories(path);
 }
 
 std::string framePath(const std::string& output_dir, unsigned int saved_index)
 {
-    std::ostringstream os;
-    os << output_dir << "/frame_" << std::setw(6) << std::setfill('0') << saved_index << ".png";
-    return os.str();
+    std::ostringstream name;
+    name << "frame_" << std::setw(6) << std::setfill('0') << saved_index << ".png";
+    return (std::filesystem::path(output_dir) / name.str()).string();
 }
 
 void printDevices(const std::vector<auto_aim::HikDeviceInfo>& devices)
