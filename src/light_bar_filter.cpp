@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <stdexcept>
 
 #include <opencv2/imgproc.hpp>
 
@@ -13,27 +12,6 @@ namespace
 
 constexpr double kPi = 3.14159265358979323846;
 constexpr double kMinSide = 1e-6;
-
-void validateParams(const LightBarFilterParams& params)
-{
-    if (params.min_area < 0.0 || params.max_area < params.min_area)
-    {
-        throw std::invalid_argument("invalid light bar area range");
-    }
-    if (params.min_aspect_ratio < 0.0 || params.max_aspect_ratio < params.min_aspect_ratio)
-    {
-        throw std::invalid_argument("invalid light bar aspect ratio range");
-    }
-    if (params.min_line_angle_deg < 0.0 || params.max_line_angle_deg > 90.0 ||
-        params.max_line_angle_deg < params.min_line_angle_deg)
-    {
-        throw std::invalid_argument("invalid light bar line angle range");
-    }
-    if (params.min_fill_ratio < 0.0 || params.max_fill_ratio < params.min_fill_ratio)
-    {
-        throw std::invalid_argument("invalid light bar fill ratio range");
-    }
-}
 
 double lineAngleFromVerticalDeg(const cv::Vec4f& line)
 {
@@ -130,7 +108,6 @@ LightBar makeLightBar(
 
 LightBarFilter::LightBarFilter(LightBarFilterParams params) : params_(params)
 {
-    validateParams(params_);
 }
 
 LightBarFilterResult LightBarFilter::filter(

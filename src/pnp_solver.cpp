@@ -10,19 +10,6 @@ namespace auto_aim
 namespace
 {
 
-constexpr double kMinArmorSize = 1e-6;
-
-void validateParams(const PnpSolverParams& params)
-{
-    if (params.small_armor_width <= kMinArmorSize ||
-        params.small_armor_height <= kMinArmorSize ||
-        params.large_armor_width <= kMinArmorSize ||
-        params.large_armor_height <= kMinArmorSize)
-    {
-        throw std::invalid_argument("armor dimensions must be positive");
-    }
-}
-
 cv::Mat normalizeCameraMatrix(const cv::Mat& matrix)
 {
     cv::Mat converted;
@@ -94,8 +81,6 @@ std::vector<cv::Point3f> makeObjectPoints(const Armor& armor, const PnpSolverPar
 
 PnpSolver::PnpSolver(PnpSolverParams params) : params_(std::move(params))
 {
-    validateParams(params_);
-
     try
     {
         if (!params_.calibration_file.empty())

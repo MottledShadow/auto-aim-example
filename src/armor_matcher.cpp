@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <stdexcept>
 #include <vector>
 
 #include <opencv2/imgproc.hpp>
@@ -13,31 +12,6 @@ namespace
 {
 
 constexpr double kMinLength = 1e-6;
-
-void validateParams(const ArmorMatcherParams& params)
-{
-    if (params.max_light_length_ratio < 1.0)
-    {
-        throw std::invalid_argument("max_light_length_ratio must be >= 1");
-    }
-    if (params.max_light_angle_diff_deg < 0.0)
-    {
-        throw std::invalid_argument("max_light_angle_diff_deg must be non-negative");
-    }
-    if (params.max_light_center_y_diff < 0.0)
-    {
-        throw std::invalid_argument("max_light_center_y_diff must be non-negative");
-    }
-    if (params.min_center_distance_ratio < 0.0 ||
-        params.max_center_distance_ratio < params.min_center_distance_ratio)
-    {
-        throw std::invalid_argument("invalid center distance ratio range");
-    }
-    if (params.large_armor_min_center_distance_ratio < 0.0)
-    {
-        throw std::invalid_argument("large armor threshold must be non-negative");
-    }
-}
 
 bool sameKnownColor(const LightBar& a, const LightBar& b)
 {
@@ -102,7 +76,6 @@ Armor makeArmor(const LightBar& left, const LightBar& right, ArmorType type)
 
 ArmorMatcher::ArmorMatcher(ArmorMatcherParams params) : params_(params)
 {
-    validateParams(params_);
 }
 
 ArmorMatchResult ArmorMatcher::match(const LightBarFilterResult& light_bars) const

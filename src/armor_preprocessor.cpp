@@ -9,22 +9,6 @@ namespace auto_aim
 namespace
 {
 
-void validateParams(const ArmorPreprocessParams& params)
-{
-    if (params.binary_threshold < 0 || params.binary_threshold > 255)
-    {
-        throw std::invalid_argument("binary_threshold must be in [0, 255]");
-    }
-    if (params.open_kernel_size < 0 || params.close_kernel_size < 0)
-    {
-        throw std::invalid_argument("morphology kernel size must be non-negative");
-    }
-    if (params.morph_iterations < 0)
-    {
-        throw std::invalid_argument("morph_iterations must be non-negative");
-    }
-}
-
 cv::Mat toGray(const cv::Mat& frame)
 {
     if (frame.empty())
@@ -56,7 +40,6 @@ cv::Mat toGray(const cv::Mat& frame)
 
 ArmorPreprocessor::ArmorPreprocessor(ArmorPreprocessParams params) : params_(params)
 {
-    validateParams(params_);
 }
 
 ArmorPreprocessResult ArmorPreprocessor::process(const cv::Mat& frame) const
