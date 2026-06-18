@@ -1,7 +1,5 @@
 #include "armor_preprocessor.hpp"
 
-#include <stdexcept>
-
 #include <opencv2/imgproc.hpp>
 
 namespace auto_aim
@@ -11,28 +9,12 @@ namespace
 
 cv::Mat toGray(const cv::Mat& frame)
 {
-    if (frame.empty())
-    {
-        throw std::invalid_argument("frame is empty");
-    }
-
-    cv::Mat gray;
     if (frame.channels() == 1)
     {
-        gray = frame.clone();
+        return frame.clone();
     }
-    else if (frame.channels() == 3)
-    {
-        cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
-    }
-    else if (frame.channels() == 4)
-    {
-        cv::cvtColor(frame, gray, cv::COLOR_BGRA2GRAY);
-    }
-    else
-    {
-        throw std::invalid_argument("unsupported frame channel count");
-    }
+    cv::Mat gray;
+    cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
     return gray;
 }
 

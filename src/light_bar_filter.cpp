@@ -34,19 +34,13 @@ bool inRange(double value, double min_value, double max_value)
 
 LightColor detectLightColor(const cv::Mat& frame, const std::vector<cv::Point>& contour)
 {
-    if (frame.empty() || frame.channels() < 3)
+    if (frame.channels() < 3)
     {
         return LightColor::Unknown;
     }
 
     cv::Mat mask = cv::Mat::zeros(frame.size(), CV_8UC1);
-    std::vector<std::vector<cv::Point>> contours{contour};
-    cv::drawContours(mask, contours, 0, cv::Scalar(255), cv::FILLED);
-
-    if (cv::countNonZero(mask) <= 0)
-    {
-        return LightColor::Unknown;
-    }
+    cv::drawContours(mask, std::vector<std::vector<cv::Point>>{contour}, 0, cv::Scalar(255), cv::FILLED);
 
     const cv::Scalar mean = cv::mean(frame, mask);
     if (mean[2] > mean[0])
