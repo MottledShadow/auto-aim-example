@@ -94,14 +94,12 @@ void drawFilteredLightBarBoxes(
 
 void drawCandidateCenterLines(
     cv::Mat& image,
-    const std::vector<cv::RotatedRect>& rects,
-    const std::vector<cv::Vec4f>& center_lines)
+    const std::vector<ContourCandidate>& candidates)
 {
-    const std::size_t count = std::min(rects.size(), center_lines.size());
-    for (std::size_t i = 0; i < count; ++i)
+    for (const ContourCandidate& candidate : candidates)
     {
-        const cv::Vec4f& line = center_lines[i];
-        const cv::RotatedRect& rect = rects[i];
+        const cv::Vec4f& line = candidate.center_line;
+        const cv::RotatedRect& rect = candidate.rect;
         const cv::Point2f direction(line[0], line[1]);
         const cv::Point2f point_on_line(line[2], line[3]);
         const float half_length = std::max(rect.size.width, rect.size.height) * 0.5F;
@@ -159,7 +157,7 @@ cv::Mat makeDebugPreview(
     }
 
     drawFilteredLightBarBoxes(preview, light_bars.candidates);
-    drawCandidateCenterLines(preview, preprocess.candidate_rects, preprocess.candidate_center_lines);
+    drawCandidateCenterLines(preview, preprocess.candidates);
     drawArmors(preview, armors.candidates);
     return preview;
 }

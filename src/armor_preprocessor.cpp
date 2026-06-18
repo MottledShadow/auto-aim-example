@@ -106,21 +106,19 @@ ArmorPreprocessResult ArmorPreprocessor::process(const cv::Mat& frame) const
         cv::RETR_EXTERNAL,
         cv::CHAIN_APPROX_SIMPLE);
 
-    result.candidate_contours.reserve(contours.size());
-    result.candidate_rects.reserve(contours.size());
-    result.candidate_center_lines.reserve(contours.size());
-    result.candidate_areas.reserve(contours.size());
+    result.candidates.reserve(contours.size());
     for (const auto& contour : contours)
     {
         if (contour.size() >= 2)
         {
-            result.candidate_contours.emplace_back(contour);
-            result.candidate_rects.emplace_back(cv::minAreaRect(contour));
-
             cv::Vec4f center_line;
             cv::fitLine(contour, center_line, cv::DIST_L2, 0, 0.01, 0.01);
-            result.candidate_center_lines.emplace_back(center_line);
-            result.candidate_areas.emplace_back(std::abs(cv::contourArea(contour)));
+            result.candidates.push_back(ContourCandidate{
+                contour,
+                cv::minAreaRect(contour),
+                center_line,
+                std::abs(cv::contourArea(contour)),
+            });
         }
     }
 

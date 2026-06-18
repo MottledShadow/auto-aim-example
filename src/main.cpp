@@ -130,8 +130,8 @@ int run(const auto_aim::AppOptions& options)
                   << " channels=" << frame.image.channels()
                   << " pixelType=0x" << std::hex << std::uppercase << frame.pixel_type
                   << std::dec << std::nouppercase
-                  << " rects=" << result.preprocess.candidate_rects.size()
-                  << " lines=" << result.preprocess.candidate_center_lines.size()
+                  << " rects=" << result.preprocess.candidates.size()
+                  << " lines=" << result.preprocess.candidates.size()
                   << " lights=" << result.light_bars.candidates.size()
                   << " armors=" << result.armors.candidates.size()
                   << " poses=" << result.pnp.poses.size();

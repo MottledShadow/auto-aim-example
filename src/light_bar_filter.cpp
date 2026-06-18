@@ -136,19 +136,14 @@ LightBarFilterResult LightBarFilter::filter(
     const ArmorPreprocessResult& preprocess) const
 {
     LightBarFilterResult result;
-    const std::size_t count = std::min(
-        preprocess.candidate_contours.size(),
-        std::min(
-            preprocess.candidate_areas.size(),
-            std::min(preprocess.candidate_rects.size(), preprocess.candidate_center_lines.size())));
-    result.candidates.reserve(count);
+    result.candidates.reserve(preprocess.candidates.size());
 
-    for (std::size_t i = 0; i < count; ++i)
+    for (const ContourCandidate& geom : preprocess.candidates)
     {
-        const std::vector<cv::Point>& contour = preprocess.candidate_contours[i];
-        const cv::RotatedRect& rect = preprocess.candidate_rects[i];
-        const cv::Vec4f& line = preprocess.candidate_center_lines[i];
-        const double area = preprocess.candidate_areas[i];
+        const std::vector<cv::Point>& contour = geom.contour;
+        const cv::RotatedRect& rect = geom.rect;
+        const cv::Vec4f& line = geom.center_line;
+        const double area = geom.area;
         const double long_side = std::max(rect.size.width, rect.size.height);
         const double short_side = std::min(rect.size.width, rect.size.height);
         if (short_side <= kMinSide)

@@ -15,13 +15,18 @@ struct ArmorPreprocessParams
     int morph_iterations = 1;
 };
 
+struct ContourCandidate
+{
+    std::vector<cv::Point> contour;
+    cv::RotatedRect rect;
+    cv::Vec4f center_line;
+    double area = 0.0;
+};
+
 struct ArmorPreprocessResult
 {
     cv::Mat binary;
-    std::vector<std::vector<cv::Point>> candidate_contours;
-    std::vector<cv::RotatedRect> candidate_rects;
-    std::vector<cv::Vec4f> candidate_center_lines;
-    std::vector<double> candidate_areas;
+    std::vector<ContourCandidate> candidates;
 };
 
 class ArmorPreprocessor
