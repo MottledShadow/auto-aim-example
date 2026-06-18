@@ -35,21 +35,21 @@ std::vector<cv::Point2f> lightBarBoxPoints(const LightBar& light)
 
 void drawFilteredLightBarBoxes(
     cv::Mat& image,
-    const std::vector<LightBarCandidate>& light_bars)
+    const std::vector<LightBar>& light_bars)
 {
-    for (const auto& candidate : light_bars)
+    for (const LightBar& light : light_bars)
     {
         cv::Scalar color(0, 255, 255);
-        if (candidate.light_bar.color == LightColor::Red)
+        if (light.color == LightColor::Red)
         {
             color = cv::Scalar(0, 0, 255);
         }
-        else if (candidate.light_bar.color == LightColor::Blue)
+        else if (light.color == LightColor::Blue)
         {
             color = cv::Scalar(255, 0, 0);
         }
 
-        const std::vector<cv::Point2f> points = lightBarBoxPoints(candidate.light_bar);
+        const std::vector<cv::Point2f> points = lightBarBoxPoints(light);
         if (points.empty())
         {
             continue;
@@ -61,7 +61,7 @@ void drawFilteredLightBarBoxes(
         }
 
         std::ostringstream os;
-        os << "A=" << std::fixed << std::setprecision(0) << candidate.area;
+        os << "A=" << std::fixed << std::setprecision(0) << light.area;
         const std::string text = os.str();
         int baseline = 0;
         const cv::Size text_size =
@@ -117,11 +117,10 @@ cv::Point toImagePoint(const cv::Point2f& point)
     return cv::Point(cvRound(point.x), cvRound(point.y));
 }
 
-void drawArmors(cv::Mat& image, const std::vector<ArmorCandidate>& armors)
+void drawArmors(cv::Mat& image, const std::vector<Armor>& armors)
 {
-    for (const auto& candidate : armors)
+    for (const Armor& armor : armors)
     {
-        const auto& armor = candidate.armor;
         std::vector<cv::Point> points{
             toImagePoint(armor.left_light.top),
             toImagePoint(armor.right_light.top),

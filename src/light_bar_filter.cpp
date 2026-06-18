@@ -85,7 +85,8 @@ LightColor detectLightColor(const cv::Mat& frame, const std::vector<cv::Point>& 
 LightBar makeLightBar(
     const cv::RotatedRect& rect,
     double line_angle_deg,
-    LightColor color)
+    LightColor color,
+    double area)
 {
     const float length = std::max(rect.size.width, rect.size.height);
     const float width = std::min(rect.size.width, rect.size.height);
@@ -121,7 +122,8 @@ LightBar makeLightBar(
         center,
         length,
         width,
-        static_cast<float>(line_angle_deg)};
+        static_cast<float>(line_angle_deg),
+        static_cast<float>(area)};
 }
 
 } // namespace
@@ -169,11 +171,8 @@ LightBarFilterResult LightBarFilter::filter(
             continue;
         }
 
-        LightBarCandidate candidate;
         const LightColor color = detectLightColor(frame, contour);
-        candidate.light_bar = makeLightBar(rect, line_angle_deg, color);
-        candidate.area = area;
-        result.candidates.emplace_back(candidate);
+        result.candidates.emplace_back(makeLightBar(rect, line_angle_deg, color, area));
     }
 
     return result;

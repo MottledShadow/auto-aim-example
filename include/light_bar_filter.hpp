@@ -22,15 +22,9 @@ struct LightBarFilterParams
     double max_fill_ratio = 1.0;
 };
 
-struct LightBarCandidate
-{
-    LightBar light_bar;
-    double area = 0.0;
-};
-
 struct LightBarFilterResult
 {
-    std::vector<LightBarCandidate> candidates;
+    std::vector<LightBar> candidates;
 };
 
 class LightBarFilter

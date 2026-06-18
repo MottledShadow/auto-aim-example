@@ -60,7 +60,7 @@ bool containsPoint(const std::vector<cv::Point2f>& region, const cv::Point2f& po
 }
 
 bool hasLightBetween(
-    const std::vector<LightBarCandidate>& lights,
+    const std::vector<LightBar>& lights,
     std::size_t left_index,
     std::size_t right_index,
     const std::vector<cv::Point2f>& region)
@@ -72,7 +72,7 @@ bool hasLightBetween(
             continue;
         }
 
-        const LightBar& light = lights[i].light_bar;
+        const LightBar& light = lights[i];
         if (containsPoint(region, light.top) ||
             containsPoint(region, light.bottom) ||
             containsPoint(region, light.center))
@@ -108,7 +108,7 @@ ArmorMatcher::ArmorMatcher(ArmorMatcherParams params) : params_(params)
 ArmorMatchResult ArmorMatcher::match(const LightBarFilterResult& light_bars) const
 {
     ArmorMatchResult result;
-    const std::vector<LightBarCandidate>& lights = light_bars.candidates;
+    const std::vector<LightBar>& lights = light_bars.candidates;
 
     for (std::size_t i = 0; i < lights.size(); ++i)
     {
@@ -116,13 +116,13 @@ ArmorMatchResult ArmorMatcher::match(const LightBarFilterResult& light_bars) con
         {
             std::size_t left_index = i;
             std::size_t right_index = j;
-            if (lights[right_index].light_bar.center.x < lights[left_index].light_bar.center.x)
+            if (lights[right_index].center.x < lights[left_index].center.x)
             {
                 std::swap(left_index, right_index);
             }
 
-            const LightBar& left = lights[left_index].light_bar;
-            const LightBar& right = lights[right_index].light_bar;
+            const LightBar& left = lights[left_index];
+            const LightBar& right = lights[right_index];
 
             if (!sameKnownColor(left, right))
             {
@@ -163,9 +163,8 @@ ArmorMatchResult ArmorMatcher::match(const LightBarFilterResult& light_bars) con
                 continue;
             }
 
-            ArmorCandidate candidate;
-            candidate.armor = makeArmor(left, right, classifyArmor(center_distance_ratio, params_));
-            result.candidates.emplace_back(candidate);
+            result.candidates.emplace_back(
+                makeArmor(left, right, classifyArmor(center_distance_ratio, params_)));
         }
     }
 

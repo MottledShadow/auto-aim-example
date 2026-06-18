@@ -122,10 +122,10 @@ PnpSolveResult PnpSolver::solve(const ArmorMatchResult& armors) const
         return result;
     }
 
-    for (const auto& candidate : armors.candidates)
+    for (const Armor& armor : armors.candidates)
     {
-        const std::vector<cv::Point2f> image_points = makeImagePoints(candidate.armor);
-        const std::vector<cv::Point3f> object_points = makeObjectPoints(candidate.armor, params_);
+        const std::vector<cv::Point2f> image_points = makeImagePoints(armor);
+        const std::vector<cv::Point3f> object_points = makeObjectPoints(armor, params_);
 
         cv::Mat rvec;
         cv::Mat tvec;
@@ -144,7 +144,7 @@ PnpSolveResult PnpSolver::solve(const ArmorMatchResult& armors) const
         }
 
         ArmorPose pose;
-        pose.armor = candidate.armor;
+        pose.armor = armor;
         pose.rvec = rvec;
         pose.tvec = tvec;
         result.poses.emplace_back(std::move(pose));

@@ -29,6 +29,7 @@ public:
     float length = 0.0F;
     float width = 0.0F;
     float angle = 0.0F;
+    float area = 0.0F;
 };
 
 class Armor

@@ -20,14 +20,9 @@ struct ArmorMatcherParams
     double large_armor_min_center_distance_ratio = 3.2;
 };
 
-struct ArmorCandidate
-{
-    Armor armor;
-};
-
 struct ArmorMatchResult
 {
-    std::vector<ArmorCandidate> candidates;
+    std::vector<Armor> candidates;
 };
 
 class ArmorMatcher
