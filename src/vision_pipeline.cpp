@@ -47,6 +47,16 @@ cv::Mat toGray(const cv::Mat& frame)
     return gray;
 }
 
+void applyMorphology(cv::Mat& image, int op, int kernel_size, int iterations)
+{
+    if (kernel_size <= 0 || iterations <= 0)
+    {
+        return;
+    }
+    const cv::Mat kernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(kernel_size, kernel_size));
+    cv::morphologyEx(image, image, op, kernel, cv::Point(-1, -1), iterations);
+}
+
 double lineAngleFromVerticalDeg(const cv::Vec4f& line)
 {
     const double vx = static_cast<double>(line[0]);
@@ -233,32 +243,8 @@ ArmorPreprocessResult preprocessFrame(const cv::Mat& frame, const ArmorPreproces
         255,
         cv::THRESH_BINARY);
 
-    if (params.open_kernel_size > 0 && params.morph_iterations > 0)
-    {
-        const cv::Mat kernel = cv::getStructuringElement(
-            cv::MORPH_RECT,
-            cv::Size(params.open_kernel_size, params.open_kernel_size));
-        cv::morphologyEx(
-            result.binary,
-            result.binary,
-            cv::MORPH_OPEN,
-            kernel,
-            cv::Point(-1, -1),
-            params.morph_iterations);
-    }
-    if (params.close_kernel_size > 0 && params.morph_iterations > 0)
-    {
-        const cv::Mat kernel = cv::getStructuringElement(
-            cv::MORPH_RECT,
-            cv::Size(params.close_kernel_size, params.close_kernel_size));
-        cv::morphologyEx(
-            result.binary,
-            result.binary,
-            cv::MORPH_CLOSE,
-            kernel,
-            cv::Point(-1, -1),
-            params.morph_iterations);
-    }
+    applyMorphology(result.binary, cv::MORPH_OPEN, params.open_kernel_size, params.morph_iterations);
+    applyMorphology(result.binary, cv::MORPH_CLOSE, params.close_kernel_size, params.morph_iterations);
 
     std::vector<std::vector<cv::Point>> contours;
     cv::Mat contour_input = result.binary.clone();
