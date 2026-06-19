@@ -3,14 +3,6 @@
 namespace auto_aim
 {
 
-VisionPipeline::VisionPipeline(const VisionPipelineParams& params)
-    : preprocessor_(params.preprocess),
-      light_bar_filter_(params.light_filter),
-      armor_matcher_(params.armor_matcher),
-      pnp_solver_(params.pnp)
-{
-}
-
 VisionPipelineResult VisionPipeline::process(const cv::Mat& frame) const
 {
     VisionPipelineResult result;

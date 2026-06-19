@@ -87,14 +87,8 @@ int run(const auto_aim::AppOptions& options)
         ensureDirectory(options.output_dir);
     }
 
-    auto_aim::VisionPipelineParams pipeline_params;
-    pipeline_params.preprocess = options.preprocess;
-    pipeline_params.light_filter = options.light_filter;
-    pipeline_params.armor_matcher = options.armor_matcher;
-    pipeline_params.pnp = options.pnp;
-
-    camera.open(options.index, options.camera);
-    auto_aim::VisionPipeline pipeline(pipeline_params);
+    camera.open(options.index, {});
+    auto_aim::VisionPipeline pipeline;
 
     unsigned int saved = 0;
     while (!g_stop && (options.frames == 0 || saved < options.frames))

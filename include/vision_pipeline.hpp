@@ -10,14 +10,6 @@
 namespace auto_aim
 {
 
-struct VisionPipelineParams
-{
-    ArmorPreprocessParams preprocess;
-    LightBarFilterParams light_filter;
-    ArmorMatcherParams armor_matcher;
-    PnpSolverParams pnp;
-};
-
 struct VisionPipelineResult
 {
     ArmorPreprocessResult preprocess;
@@ -29,8 +21,6 @@ struct VisionPipelineResult
 class VisionPipeline
 {
 public:
-    explicit VisionPipeline(const VisionPipelineParams& params);
-
     VisionPipelineResult process(const cv::Mat& frame) const;
 
 private:

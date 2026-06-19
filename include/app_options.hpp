@@ -2,12 +2,6 @@
 
 #include <string>
 
-#include "armor_matcher.hpp"
-#include "armor_preprocessor.hpp"
-#include "hik_capture.hpp"
-#include "light_bar_filter.hpp"
-#include "pnp_solver.hpp"
-
 namespace auto_aim
 {
 
@@ -21,11 +15,6 @@ struct AppOptions
     bool save = true;
     bool show = false;
     bool show_binary = false;
-    HikCameraConfig camera;
-    ArmorPreprocessParams preprocess;
-    LightBarFilterParams light_filter;
-    ArmorMatcherParams armor_matcher;
-    PnpSolverParams pnp;
 };
 
 AppOptions parseArgs(int argc, char** argv);
