@@ -35,7 +35,6 @@ endif()
 add_executable(${TARGET_NAME}
     src/main.cpp
     src/hik_capture.cpp
-    src/app_options.cpp
     src/debug_draw.cpp
     src/vision_pipeline.cpp
 )
