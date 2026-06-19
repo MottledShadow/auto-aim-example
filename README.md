@@ -4,14 +4,14 @@ RM 装甲板识别示例工程。当前项目从海康工业相机取帧，将�
 
 ## Pipeline
 
-当前视觉流程在 `VisionPipeline` 中串联：
+当前视觉流程由 `vision_pipeline` 里的自由函数串联（入口 `runPipeline`）：
 
 ```text
 HikCapture
-  -> ArmorPreprocessor
-  -> LightBarFilter
-  -> ArmorMatcher
-  -> PnpSolver
+  -> preprocessFrame
+  -> filterLightBars
+  -> matchArmors
+  -> solvePnp
 ```
 
 处理步骤：
@@ -31,18 +31,12 @@ HikCapture
 ## 目录结构
 
 - `include/hik_capture.hpp` / `src/hik_capture.cpp`：海康相机封装，只负责枚举、打开、配置、取帧和像素格式转换。
-- `include/vision_pipeline.hpp` / `src/vision_pipeline.cpp`：视觉 pipeline 总入口。
-- `include/armor_preprocessor.hpp` / `src/armor_preprocessor.cpp`：图像预处理和轮廓几何提取。
-- `include/light_bar_filter.hpp` / `src/light_bar_filter.cpp`：灯条筛选和颜色识别。
-- `include/armor_matcher.hpp` / `src/armor_matcher.cpp`：灯条配对成装甲板候选，并粗分 small/large。
-- `include/pnp_solver.hpp` / `src/pnp_solver.cpp`：装甲板 PnP 位姿解算，读取 OpenCV YAML 标定文件。
-- `include/armor_types.hpp`：`LightBar`、`Armor` 等基础数据结构。
-- `include/app_options.hpp` / `src/app_options.cpp`：运行选项解析。
+- `include/vision_pipeline.hpp` / `src/vision_pipeline.cpp`：视觉算法全部——数据类型（`LightBar`、`Armor` 等）、各阶段参数，预处理/灯条筛选/装甲板配对/PnP 解算的自由函数（`preprocessFrame`、`filterLightBars`、`matchArmors`、`solvePnp`），串联它们的 `runPipeline`，以及读取 YAML 标定的 `loadCalibration`。
 - `include/debug_draw.hpp` / `src/debug_draw.cpp`：调试画面绘制。
 - `config/camera_calibration.yml`：由 Python `.npy` 标定参数转换出的 OpenCV YAML。
 - `tools/convert_calibration_npy.js`：离线转换 `.npy` 到 YAML 的小工具，不参与程序编译。
 - `CMakeLists.txt`：CMake 构建入口。
-- `src/main.cpp`：程序入口。
+- `src/main.cpp`：程序入口，含运行选项解析。
 
 ## 调参方式
 
@@ -58,10 +52,10 @@ HikCapture
 
 ## PnP 标定参数
 
-程序运行时只读 YAML，不再解析 `.npy`。默认标定文件路径在 `PnpSolverParams::calibration_file`：
+程序运行时只读 YAML，不再解析 `.npy`。默认标定文件路径是 `loadCalibration` 的默认实参：
 
 ```cpp
-std::string calibration_file = "config/camera_calibration.yml";
+Calibration loadCalibration(const std::string& path = "config/camera_calibration.yml");
 ```
 
 当前已将这两个文件转换到 `config/camera_calibration.yml`：
