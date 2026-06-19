@@ -88,7 +88,7 @@ int run(const auto_aim::AppOptions& options)
     }
 
     camera.open(options.index, {});
-    auto_aim::VisionPipeline pipeline;
+    const auto_aim::Calibration calibration = auto_aim::loadCalibration();
 
     unsigned int saved = 0;
     while (!g_stop && (options.frames == 0 || saved < options.frames))
@@ -100,7 +100,7 @@ int run(const auto_aim::AppOptions& options)
             continue;
         }
 
-        const auto_aim::VisionPipelineResult result = pipeline.process(frame.image);
+        const auto_aim::VisionPipelineResult result = auto_aim::runPipeline(frame.image, calibration);
         std::cout << "frame=" << frame.frame_number
                   << " hardwareTimestamp=" << frame.hardware_timestamp
                   << " size=" << frame.image.cols << 'x' << frame.image.rows

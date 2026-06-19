@@ -2,9 +2,7 @@
 
 #include <opencv2/core.hpp>
 
-#include "armor_matcher.hpp"
-#include "armor_preprocessor.hpp"
-#include "light_bar_filter.hpp"
+#include "vision_pipeline.hpp"
 
 namespace auto_aim
 {

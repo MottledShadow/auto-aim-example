@@ -38,10 +38,6 @@ add_executable(${TARGET_NAME}
     src/app_options.cpp
     src/debug_draw.cpp
     src/vision_pipeline.cpp
-    src/armor_preprocessor.cpp
-    src/light_bar_filter.cpp
-    src/armor_matcher.cpp
-    src/pnp_solver.cpp
 )
 
 target_include_directories(${TARGET_NAME}
