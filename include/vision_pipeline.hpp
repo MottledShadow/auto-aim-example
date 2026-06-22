@@ -47,38 +47,38 @@ public:
 
 struct ArmorPreprocessParams
 {
-    int binary_threshold = 180;
-    int open_kernel_size = 3;
-    int close_kernel_size = 3;
+    int binary_threshold = 75;
+    int open_kernel_size = 5;
+    int close_kernel_size = 5;
     int morph_iterations = 1;
 };
 
 struct LightBarFilterParams
 {
-    double min_area = 5.0;
-    double max_area = 1000000.0;
-    double min_aspect_ratio = 1.2;
-    double max_aspect_ratio = 50.0;
+    double min_area = 30.0;
+    double max_area = 20000.0;
+    double min_aspect_ratio = 2.0;
+    double max_aspect_ratio = 30.0;
     double min_line_angle_deg = 0.0;
-    double max_line_angle_deg = 45.0;
-    double min_fill_ratio = 0.25;
+    double max_line_angle_deg = 30.0;
+    double min_fill_ratio = 0.75;
     double max_fill_ratio = 1.0;
 };
 
 struct ArmorMatcherParams
 {
-    double max_light_length_ratio = 2.0;
-    double max_light_angle_diff_deg = 10.0;
-    double max_light_center_y_diff = 40.0;
-    double min_center_distance_ratio = 0.5;
-    double max_center_distance_ratio = 8.0;
+    double max_light_length_ratio = 3.0;
+    double max_light_angle_diff_deg = 20.0;
+    double max_light_center_y_diff = 400.0;
+    double min_center_distance_ratio = 1.0;
+    double max_center_distance_ratio = 5.0;
     double large_armor_min_center_distance_ratio = 3.2;
 };
 
 struct PnpSolverParams
 {
-    double small_armor_width = 135.0;
-    double small_armor_height = 55.0;
+    double small_armor_width = 130.0;
+    double small_armor_height = 60.0;
     double large_armor_width = 230.0;
     double large_armor_height = 55.0;
 

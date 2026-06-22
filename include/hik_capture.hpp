@@ -12,11 +12,11 @@ namespace auto_aim
 
 struct HikCameraConfig
 {
-    bool has_exposure = false;
+    bool has_exposure = true;
     bool has_gain = false;
     bool has_width = false;
     bool has_height = false;
-    float exposure_us = 0.0F;
+    float exposure_us = 6000.0F;
     float gain = 0.0F;
     unsigned int width = 0;
     unsigned int height = 0;

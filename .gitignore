@@ -4,3 +4,4 @@ CMakeCache.txt
 CMakeFiles/
 compile_commands.json
 captures/
+.vscode/
