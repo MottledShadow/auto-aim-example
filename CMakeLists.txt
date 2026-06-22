@@ -75,3 +75,33 @@ add_custom_command(
             "${PROJECT_SOURCE_DIR}/config"
             "$<TARGET_FILE_DIR:${TARGET_NAME}>/config"
 )
+
+add_executable(calibrate_camera
+    src/calibrate_main.cpp
+    src/hik_capture.cpp
+)
+
+target_include_directories(calibrate_camera
+    PRIVATE
+        "${PROJECT_SOURCE_DIR}/include"
+        "${MVCAM_INCLUDE_DIR}"
+)
+
+target_link_libraries(calibrate_camera
+    PRIVATE
+        ${OpenCV_LIBS}
+        "${MVCAM_LIBRARY}"
+)
+
+if(MSVC)
+    target_compile_options(calibrate_camera PRIVATE /W4)
+else()
+    target_compile_options(calibrate_camera PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
+set_target_properties(calibrate_camera
+    PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}"
+        BUILD_RPATH "${MVCAM_LIBRARY_DIR}"
+        INSTALL_RPATH "${MVCAM_LIBRARY_DIR}"
+)
