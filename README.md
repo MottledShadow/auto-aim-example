@@ -31,7 +31,12 @@ HikCapture
 ## 目录结构
 
 - `include/hik_capture.hpp` / `src/hik_capture.cpp`：海康相机封装，只负责枚举、打开、配置、取帧和像素格式转换。
-- `include/vision_pipeline.hpp` / `src/vision_pipeline.cpp`：视觉算法全部——数据类型（`LightBar`、`Armor` 等）、各阶段参数，预处理/灯条筛选/装甲板配对/PnP 解算的自由函数（`preprocessFrame`、`filterLightBars`、`matchArmors`、`solvePnp`），串联它们的 `runPipeline`，以及读取 YAML 标定的 `loadCalibration`。
+- `include/vision_pipeline.hpp`：视觉模块共享头——数据类型（`LightBar`、`Armor` 等）、各阶段参数与结果、`Calibration`，以及所有自由函数声明。
+- `src/vision_pipeline.cpp`：编排层，`runPipeline` 串起四个阶段，外加跨阶段的角点工具 `armorCorners`。
+- `src/armor_preprocessor.cpp`：图像预处理与轮廓几何提取（`preprocessFrame`）。
+- `src/light_bar_filter.cpp`：灯条筛选与颜色识别（`filterLightBars`）。
+- `src/armor_matcher.cpp`：灯条配对成装甲板候选（`matchArmors`）。
+- `src/pnp_solver.cpp`：读取 YAML 标定（`loadCalibration`）与装甲板 PnP 位姿解算（`solvePnp`）。
 - `include/debug_draw.hpp` / `src/debug_draw.cpp`：调试画面绘制。
 - `config/camera_calibration.yml`：由 Python `.npy` 标定参数转换出的 OpenCV YAML。
 - `tools/convert_calibration_npy.js`：离线转换 `.npy` 到 YAML 的小工具，不参与程序编译。
