@@ -137,6 +137,8 @@ struct VisionPipelineResult
     PnpSolveResult pnp;
 };
 
+std::vector<cv::Point2f> armorCorners(const LightBar& left, const LightBar& right);
+
 ArmorPreprocessResult preprocessFrame(const cv::Mat& frame, const ArmorPreprocessParams& params = {});
 
 LightBarFilterResult filterLightBars(
