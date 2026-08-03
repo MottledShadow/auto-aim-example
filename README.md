@@ -153,25 +153,23 @@ CMake 会把可执行文件输出到 `build/hik_capture`，并在构建后把 `c
 
 ## 相机标定（棋盘格）
 
-`calibrate_camera` 是独立的标定工具，和主程序一起由 CMake 构建，输出到 `build/calibrate_camera`。它复用 `hik_capture` 取帧，检测棋盘格内角点（`findChessboardCorners` + `cornerSubPix`），收集多个视角后调用 `cv::calibrateCamera`，打印重投影误差，并把 `camera_matrix` / `dist_coeffs` 写进 `config/camera_calibration.yml`——即 `loadCalibration` 默认读取的文件，标定完主程序无需改动直接生效。
-
-`--cols` / `--rows` 是**内角点**数量（例如「9×6」标定板＝10×7 个方格 ＝ 9×6 内角点）。`--square-size` 仅影响外参尺度，对保存的内参/畸变没有影响，按实际方格边长（毫米）填即可。
+`calibrate_camera` 是独立的标定工具，和主程序一起由 CMake 构建，输出到 `build/calibrate_camera`。它固定使用 9×6 个内角点、25 mm 方格，并要求至少采集 20 个有效视角。标定结果写入 `config/camera_calibration.yml`，主程序无需改动即可读取。
 
 实时标定（从相机取帧，需要有显示窗口）：
 
 ```bash
-./build/calibrate_camera --index 0 --cols 9 --rows 6 --square-size 25
+./build/calibrate_camera
 ```
 
-预览窗口里的按键：`SPACE` 或 `c` 采纳当前视角，`u` 撤销上一个，`ENTER` 结束并标定，`ESC` 放弃退出。建议覆盖画面不同位置/角度采 15 张以上。
+预览窗口里的按键：`SPACE` 采纳当前视角，`u` 撤销上一个，`ENTER` 标定，`ESC` 放弃退出。需要覆盖画面不同位置和角度采集至少 20 个视角；不足 20 个视角时不会写入标定文件。
 
 离线标定（从已保存的图片目录，不需要相机）：
 
 ```bash
-./build/calibrate_camera --images captures --cols 9 --rows 6
+./build/calibrate_camera --images captures
 ```
 
-终端会列出每张图是否检测到棋盘格，最后打印整体 RMS 重投影误差和每个视角的误差（单位像素），误差偏大的视角可以重拍后再标。运行目录要和主程序一致（相对路径 `config/camera_calibration.yml`）。
+终端会列出每张图是否检测到棋盘格，并打印整体 RMS 重投影误差、相机矩阵和畸变系数。目录中至少需要 20 张能检测到棋盘格的图片。运行目录要和主程序一致，以便相对路径 `config/camera_calibration.yml` 指向正确位置。
 
 ## 当前输出
 
