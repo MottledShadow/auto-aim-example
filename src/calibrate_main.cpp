@@ -19,17 +19,36 @@ namespace
 {
 
 std::atomic_bool g_stop{false};
+std::atomic_bool g_capture{false};
+std::atomic_bool g_undo{false};
+std::atomic_bool g_calibrate{false};
 
 constexpr unsigned int kCameraIndex = 0;
 constexpr int kTimeoutMs = 1000;
 constexpr int kRequiredViews = 20;
 constexpr double kSquareSize = 25.0;
+constexpr double kPreviewScale = 0.5;
 constexpr char kOutputPath[] = "config/camera_calibration.yml";
 const cv::Size kPatternSize(9, 6);
 
 void handleSignal(int)
 {
     g_stop = true;
+}
+
+void handleCapture(int)
+{
+    g_capture = true;
+}
+
+void handleUndo(int)
+{
+    g_undo = true;
+}
+
+void handleCalibrate(int)
+{
+    g_calibrate = true;
 }
 
 void printUsage(const char* exe)
@@ -201,34 +220,36 @@ int runLive()
             continue;
         }
 
-        const cv::Mat gray = toGray(frame.image);
-        std::vector<cv::Point2f> corners;
-        const bool found = detectCorners(gray, corners, false);
-
         cv::Mat preview;
-        if (frame.image.channels() == 1)
+        cv::resize(frame.image, preview, {}, kPreviewScale, kPreviewScale, cv::INTER_AREA);
+        const cv::Mat preview_gray = toGray(preview);
+        std::vector<cv::Point2f> corners;
+        const bool found = detectCorners(preview_gray, corners, false);
+
+        cv::Mat display;
+        if (preview.channels() == 1)
         {
-            cv::cvtColor(frame.image, preview, cv::COLOR_GRAY2BGR);
+            cv::cvtColor(preview, display, cv::COLOR_GRAY2BGR);
         }
         else
         {
-            preview = frame.image.clone();
+            display = preview;
         }
-        cv::drawChessboardCorners(preview, kPatternSize, corners, found);
+        cv::drawChessboardCorners(display, kPatternSize, corners, found);
         cv::putText(
-            preview,
+            display,
             "views=" + std::to_string(image_points.size()) + "/" + std::to_string(kRequiredViews) +
                 (found ? "  board:OK" : "  board:--"),
             cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 0.8,
             found ? cv::Scalar(0, 255, 0) : cv::Scalar(0, 0, 255), 2);
-        cv::imshow("calibrate_camera", preview);
+        cv::imshow("calibrate_camera", display);
 
         const int key = cv::waitKey(1);
         if (key == 27)
         {
             break;
         }
-        if (key == 13 || key == 10)
+        if (key == 13 || key == 10 || g_calibrate.exchange(false))
         {
             if (image_points.size() < kRequiredViews)
             {
@@ -237,8 +258,9 @@ int runLive()
             }
             return calibrateAndSave(image_points, image_size);
         }
-        if (key == ' ')
+        if (key == ' ' || g_capture.exchange(false))
         {
+            const cv::Mat gray = toGray(frame.image);
             std::vector<cv::Point2f> refined;
             if (detectCorners(gray, refined, true))
             {
@@ -251,7 +273,7 @@ int runLive()
                 std::cout << "no chessboard detected, view not accepted\n";
             }
         }
-        else if ((key == 'u' || key == 'U') && !image_points.empty())
+        else if ((key == 'u' || key == 'U' || g_undo.exchange(false)) && !image_points.empty())
         {
             image_points.pop_back();
             std::cout << "removed last view, now " << image_points.size() << '\n';
@@ -268,6 +290,9 @@ int main(int argc, char** argv)
 {
     std::signal(SIGINT, handleSignal);
     std::signal(SIGTERM, handleSignal);
+    std::signal(SIGUSR1, handleCapture);
+    std::signal(SIGUSR2, handleUndo);
+    std::signal(SIGQUIT, handleCalibrate);
 
     try
     {
