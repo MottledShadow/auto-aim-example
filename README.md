@@ -30,19 +30,55 @@ HikCapture
 
 ## 目录结构
 
-- `include/hik_capture.hpp` / `src/hik_capture.cpp`：海康相机封装，只负责枚举、打开、配置、取帧和像素格式转换。
-- `include/vision_pipeline.hpp`：视觉模块共享头——数据类型（`LightBar`、`Armor` 等）、各阶段参数与结果、`Calibration`，以及所有自由函数声明。
-- `src/vision_pipeline.cpp`：编排层，`runPipeline` 串起四个阶段，外加跨阶段的角点工具 `armorCorners`。
-- `src/armor_preprocessor.cpp`：图像预处理与轮廓几何提取（`preprocessFrame`）。
-- `src/light_bar_filter.cpp`：灯条筛选与颜色识别（`filterLightBars`）。
-- `src/armor_matcher.cpp`：灯条配对成装甲板候选（`matchArmors`）。
-- `src/pnp_solver.cpp`：读取 YAML 标定（`loadCalibration`）与装甲板 PnP 位姿解算（`solvePnp`）。
-- `include/debug_draw.hpp` / `src/debug_draw.cpp`：调试画面绘制。
-- `config/camera_calibration.yml`：由 Python `.npy` 标定参数转换出的 OpenCV YAML。
-- `tools/convert_calibration_npy.js`：离线转换 `.npy` 到 YAML 的小工具，不参与程序编译。
-- `CMakeLists.txt`：CMake 构建入口。
-- `src/main.cpp`：程序入口，含运行选项解析。
-- `src/calibrate_main.cpp`：棋盘格相机标定工具 `calibrate_camera` 的入口，复用 `hik_capture` 取帧，输出 `config/camera_calibration.yml`。
+  1. 相机采集
+
+  - include/hik_capture.hpp
+  - src/hik_capture.cpp
+
+  封装海康工业相机 SDK，负责设备枚举、相机配置、取帧，以及将相机图像转换为 OpenCV 的 cv::Mat。
+
+  2. 装甲板视觉识别流水线
+
+  核心流程是：
+
+  相机图像
+    → 图像预处理
+    → 灯条筛选
+    → 灯条配对
+    → PnP 位姿解算
+
+  对应文件：
+
+  - src/armor_preprocessor.cpp：灰度化、二值化、形态学处理和轮廓提取。
+  - src/light_bar_filter.cpp：按照面积、长宽比、角度、填充率筛选灯条，并判断红蓝颜色。
+  - src/armor_matcher.cpp：将两个同色灯条配对成装甲板，并区分大小装甲板。
+  - src/pnp_solver.cpp：结合相机内参计算装甲板的旋转和平移。
+  - src/vision_pipeline.cpp：负责串联上述步骤。
+  - include/vision_pipeline.hpp：定义公共数据结构、参数和函数接口。
+
+  3. 主程序与调试显示
+
+  - src/main.cpp：程序入口，打开第一台相机、循环取帧、运行识别流水线并输出识别结果。
+  - src/debug_draw.cpp：绘制灯条、装甲板和二值图等调试信息。
+
+  4. 相机标定
+
+  - src/calibrate_main.cpp：棋盘格标定程序，可实时采图或读取已有图片。
+  - config/camera_calibration.yml：运行时使用的相机内参和畸变参数。
+  - tools/convert_calibration_npy.js：把 Python 的 .npy 标定结果转为 OpenCV YAML。
+
+  5. 模型和数据资源
+
+  - model/mlp.onnx
+  - model/label.txt
+
+  仓库中包含一个 ONNX MLP 模型和标签文件，但当前 CMake 和视觉流水线没有加载它们，所以它们目前没有参与实际识别。
+
+  6. 构建、交叉编译与部署
+
+  - CMakeLists.txt：构建主程序 hik_capture 和标定程序 calibrate_camera。
+  - jetson-toolchain.cmake：面向 Jetson ARM64 的交叉编译配置。
+  - scripts/cross-deploy-run.sh：交叉构建、上传到 Jetson 并运行。
 
 ## 调参方式
 
