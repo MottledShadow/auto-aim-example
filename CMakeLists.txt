@@ -105,3 +105,33 @@ set_target_properties(calibrate_camera
         BUILD_RPATH "${MVCAM_LIBRARY_DIR}"
         INSTALL_RPATH "${MVCAM_LIBRARY_DIR}"
 )
+
+add_executable(hik_camera_test
+    tests/hik_camera_test.cpp
+    hik_camera/hik_camera.cpp
+)
+
+target_include_directories(hik_camera_test
+    PRIVATE
+        "${PROJECT_SOURCE_DIR}/hik_camera"
+        "${MVCAM_INCLUDE_DIR}"
+)
+
+target_link_libraries(hik_camera_test
+    PRIVATE
+        ${OpenCV_LIBS}
+        "${MVCAM_LIBRARY}"
+)
+
+if(MSVC)
+    target_compile_options(hik_camera_test PRIVATE /W4)
+else()
+    target_compile_options(hik_camera_test PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
+set_target_properties(hik_camera_test
+    PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}"
+        BUILD_RPATH "${MVCAM_LIBRARY_DIR}"
+        INSTALL_RPATH "${MVCAM_LIBRARY_DIR}"
+)
