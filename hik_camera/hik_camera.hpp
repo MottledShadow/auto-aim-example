@@ -11,6 +11,7 @@ namespace auto_aim
 
 inline constexpr unsigned int kDefaultHikImageNodeCount = 5;
 inline constexpr unsigned int kDefaultHikFrameTimeoutMs = 1000;
+inline constexpr float kDefaultHikExposureTimeUs = 5000.0F;
 
 struct HikCameraFrame
 {
@@ -29,7 +30,9 @@ public:
     HikCamera(const HikCamera&) = delete;
     HikCamera& operator=(const HikCamera&) = delete;
 
-    int initialize(unsigned int nodeCount = kDefaultHikImageNodeCount);
+    int initialize(
+        unsigned int nodeCount = kDefaultHikImageNodeCount,
+        float exposureTimeUs = kDefaultHikExposureTimeUs);
     int capture(
         HikCameraFrame& frame,
         unsigned int timeoutMs = kDefaultHikFrameTimeoutMs);

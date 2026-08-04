@@ -50,7 +50,7 @@ HikCamera::~HikCamera()
     shutdown();
 }
 
-int HikCamera::initialize(unsigned int nodeCount)
+int HikCamera::initialize(unsigned int nodeCount, float exposureTimeUs)
 {
     if (sdkInitialized_ || handle_ != nullptr)
     {
@@ -79,6 +79,14 @@ int HikCamera::initialize(unsigned int nodeCount)
     {
         result = MV_CC_OpenDevice(handle_);
         deviceOpened_ = result == MV_OK;
+    }
+    if (result == MV_OK)
+    {
+        result = MV_CC_SetEnumValue(handle_, "ExposureAuto", 0);
+    }
+    if (result == MV_OK)
+    {
+        result = MV_CC_SetFloatValue(handle_, "ExposureTime", exposureTimeUs);
     }
     if (result == MV_OK)
     {
