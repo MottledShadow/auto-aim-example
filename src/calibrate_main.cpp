@@ -26,10 +26,10 @@ std::atomic_bool g_calibrate{false};
 constexpr unsigned int kCameraIndex = 0;
 constexpr int kTimeoutMs = 1000;
 constexpr int kRequiredViews = 20;
-constexpr double kSquareSize = 25.0;
-constexpr double kPreviewScale = 0.5;
+constexpr double kSquareSize = 60.0;
+constexpr double kPreviewScale = 0.25;
 constexpr char kOutputPath[] = "config/camera_calibration.yml";
-const cv::Size kPatternSize(9, 6);
+const cv::Size kPatternSize(11, 8);
 
 void handleSignal(int)
 {

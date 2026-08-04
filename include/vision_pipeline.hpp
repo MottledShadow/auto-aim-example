@@ -47,7 +47,7 @@ public:
 
 struct ArmorPreprocessParams
 {
-    int binary_threshold = 75;
+    int binary_threshold = 20;
     int open_kernel_size = 5;
     int close_kernel_size = 5;
     int morph_iterations = 1;

@@ -16,7 +16,7 @@ struct HikCameraConfig
     bool has_gain = false;
     bool has_width = false;
     bool has_height = false;
-    float exposure_us = 6000.0F;
+    float exposure_us = 5000.0F;
     float gain = 0.0F;
     unsigned int width = 0;
     unsigned int height = 0;

@@ -30,5 +30,5 @@ runtime_dir="/run/user/$(id -u)"
 DISPLAY=:0 \
 XAUTHORITY="$runtime_dir/gdm/Xauthority" \
 XDG_RUNTIME_DIR="$runtime_dir" \
-./hik_capture
+./hik_capture --show-binary
 '
