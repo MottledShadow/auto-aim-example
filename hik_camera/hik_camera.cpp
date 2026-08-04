@@ -103,9 +103,9 @@ int HikCamera::initialize(unsigned int nodeCount)
 
 int HikCamera::capture(HikCameraFrame& frame, unsigned int timeoutMs)
 {
-    frame = {};
     if (!grabbing_)
     {
+        frame = {};
         return MV_E_CALLORDER;
     }
 
@@ -113,6 +113,7 @@ int HikCamera::capture(HikCameraFrame& frame, unsigned int timeoutMs)
     int result = MV_CC_GetImageBuffer(handle_, &source, timeoutMs);
     if (result != MV_OK)
     {
+        frame = {};
         return result;
     }
 
@@ -128,7 +129,7 @@ int HikCamera::capture(HikCameraFrame& frame, unsigned int timeoutMs)
     }
     else
     {
-        frame.image.release();
+        frame = {};
     }
 
     const int freeResult = MV_CC_FreeImageBuffer(handle_, &source);

@@ -21,6 +21,8 @@ struct PhaseStats
     double elapsedSeconds = 0.0;
     double captureSeconds = 0.0;
     double displaySeconds = 0.0;
+    unsigned int bufferChanges = 0;
+    const unsigned char* bufferAddress = nullptr;
 };
 
 int captureFrames(
@@ -54,6 +56,12 @@ int captureFrames(
         if (stats.captured == 0)
         {
             stats.firstFrame = frame.frameNumber;
+            stats.bufferAddress = frame.image.data;
+        }
+        else if (frame.image.data != stats.bufferAddress)
+        {
+            ++stats.bufferChanges;
+            stats.bufferAddress = frame.image.data;
         }
         stats.lastFrame = frame.frameNumber;
         ++stats.captured;
@@ -90,6 +98,7 @@ void printStats(const char* phase, const PhaseStats& stats)
               << " captured=" << stats.captured
               << " camera_frames=" << cameraFrames
               << " skipped=" << skippedFrames
+              << " buffer_changes=" << stats.bufferChanges
               << " elapsed=" << stats.elapsedSeconds << "s"
               << " throughput_fps=" << stats.captured / stats.elapsedSeconds
               << " average_capture_ms="
