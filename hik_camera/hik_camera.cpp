@@ -98,6 +98,10 @@ int HikCamera::initialize(unsigned int nodeCount, float exposureTimeUs)
     }
     if (result == MV_OK)
     {
+        result = MV_CC_SetGrabStrategy(handle_, MV_GrabStrategy_LatestImagesOnly);
+    }
+    if (result == MV_OK)
+    {
         result = MV_CC_StartGrabbing(handle_);
         grabbing_ = result == MV_OK;
     }
