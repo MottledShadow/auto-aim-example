@@ -2,6 +2,7 @@
 #include <exception>
 #include <iomanip>
 #include <iostream>
+#include <set>
 
 #include <opencv2/highgui.hpp>
 
@@ -21,8 +22,7 @@ struct PhaseStats
     double elapsedSeconds = 0.0;
     double captureSeconds = 0.0;
     double displaySeconds = 0.0;
-    unsigned int bufferChanges = 0;
-    const unsigned char* bufferAddress = nullptr;
+    std::set<const unsigned char*> bufferAddresses;
 };
 
 int captureFrames(
@@ -56,13 +56,8 @@ int captureFrames(
         if (stats.captured == 0)
         {
             stats.firstFrame = frame.frameNumber;
-            stats.bufferAddress = frame.image.data;
         }
-        else if (frame.image.data != stats.bufferAddress)
-        {
-            ++stats.bufferChanges;
-            stats.bufferAddress = frame.image.data;
-        }
+        stats.bufferAddresses.insert(frame.image.data);
         stats.lastFrame = frame.frameNumber;
         ++stats.captured;
 
@@ -84,6 +79,11 @@ int captureFrames(
     stats.elapsedSeconds = std::chrono::duration<double>(
         std::chrono::steady_clock::now() - phaseStart)
                                .count();
+    if (stats.bufferAddresses.size() > 3)
+    {
+        std::cerr << "image buffers were reallocated during capture\n";
+        return 4;
+    }
     return MV_OK;
 }
 
@@ -92,15 +92,17 @@ void printStats(const char* phase, const PhaseStats& stats)
     const unsigned int cameraFrames = stats.lastFrame - stats.firstFrame + 1;
     const unsigned int skippedFrames =
         cameraFrames > stats.captured ? cameraFrames - stats.captured : 0;
+    const double sourceFps = cameraFrames / stats.elapsedSeconds;
 
     std::cout << std::fixed << std::setprecision(2)
               << "phase=" << phase
               << " captured=" << stats.captured
               << " camera_frames=" << cameraFrames
               << " skipped=" << skippedFrames
-              << " buffer_changes=" << stats.bufferChanges
+              << " unique_buffers=" << stats.bufferAddresses.size()
               << " elapsed=" << stats.elapsedSeconds << "s"
               << " throughput_fps=" << stats.captured / stats.elapsedSeconds
+              << " source_fps=" << sourceFps
               << " average_capture_ms="
               << stats.captureSeconds * 1000.0 / stats.captured
               << " average_display_ms="
@@ -147,7 +149,7 @@ int run()
     {
         std::cerr << "shutdown failed: 0x"
                   << std::hex << static_cast<unsigned int>(result) << '\n';
-        return 4;
+        return 5;
     }
     return 0;
 }
@@ -163,6 +165,6 @@ int main()
     catch (const std::exception& exception)
     {
         std::cerr << "test failed: " << exception.what() << '\n';
-        return 5;
+        return 6;
     }
 }

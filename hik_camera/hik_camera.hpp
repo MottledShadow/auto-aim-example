@@ -1,6 +1,10 @@
 #pragma once
 
+#include <atomic>
+#include <condition_variable>
 #include <cstdint>
+#include <mutex>
+#include <thread>
 
 #include <opencv2/core.hpp>
 
@@ -39,10 +43,21 @@ public:
     int shutdown();
 
 private:
+    int grabFrame(HikCameraFrame& frame, unsigned int timeoutMs);
+    void captureLoop();
+
     void* handle_ = nullptr;
     bool sdkInitialized_ = false;
     bool deviceOpened_ = false;
     bool grabbing_ = false;
+    std::thread captureThread_;
+    std::atomic_bool stopCapture_{false};
+    std::mutex frameMutex_;
+    std::condition_variable frameReady_;
+    HikCameraFrame latestFrame_;
+    std::uint64_t publishedFrame_ = 0;
+    std::uint64_t consumedFrame_ = 0;
+    int captureResult_ = MV_OK;
 };
 
 } // namespace auto_aim

@@ -9,6 +9,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(TARGET_NAME hik_capture)
 
 find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs highgui calib3d)
+find_package(Threads REQUIRED)
 
 set(MVCAM_ROOT "/opt/MVS" CACHE PATH "Hikrobot MVS SDK root directory")
 set(MVCAM_INCLUDE_DIR "${MVCAM_ROOT}/include" CACHE PATH "Hikrobot MVS SDK include directory")
@@ -121,6 +122,7 @@ target_link_libraries(hik_camera_test
     PRIVATE
         ${OpenCV_LIBS}
         "${MVCAM_LIBRARY}"
+        Threads::Threads
 )
 
 if(MSVC)
