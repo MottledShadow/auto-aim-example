@@ -16,7 +16,7 @@ std::vector<cv::Point2f> armorCorners(const LightBar& left, const LightBar& righ
 VisionPipelineResult runPipeline(const cv::Mat& frame, const Calibration& calibration)
 {
     VisionPipelineResult result;
-    result.preprocess = preprocessFrame(frame);
+    result.preprocess = preprocess(frame);
     result.light_bars = filterLightBars(frame, result.preprocess);
     result.armors = matchArmors(result.light_bars);
     result.pnp = solvePnp(result.armors, calibration);

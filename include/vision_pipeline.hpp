@@ -6,6 +6,8 @@
 #include <opencv2/calib3d.hpp>
 #include <opencv2/core.hpp>
 
+#include "detector.hpp"
+
 namespace auto_aim
 {
 
@@ -45,14 +47,6 @@ public:
     ArmorType type = ArmorType::Unknown;
 };
 
-struct ArmorPreprocessParams
-{
-    int binary_threshold = 20;
-    int open_kernel_size = 5;
-    int close_kernel_size = 5;
-    int morph_iterations = 1;
-};
-
 struct LightBarFilterParams
 {
     double min_area = 30.0;
@@ -83,20 +77,6 @@ struct PnpSolverParams
     double large_armor_height = 55.0;
 
     int solve_pnp_method = cv::SOLVEPNP_IPPE;
-};
-
-struct ContourCandidate
-{
-    std::vector<cv::Point> contour;
-    cv::RotatedRect rect;
-    cv::Vec4f center_line;
-    double area = 0.0;
-};
-
-struct ArmorPreprocessResult
-{
-    cv::Mat binary;
-    std::vector<ContourCandidate> candidates;
 };
 
 struct LightBarFilterResult
@@ -138,8 +118,6 @@ struct VisionPipelineResult
 };
 
 std::vector<cv::Point2f> armorCorners(const LightBar& left, const LightBar& right);
-
-ArmorPreprocessResult preprocessFrame(const cv::Mat& frame, const ArmorPreprocessParams& params = {});
 
 LightBarFilterResult filterLightBars(
     const cv::Mat& frame,

@@ -8,7 +8,7 @@ RM 装甲板识别示例工程。当前项目从海康工业相机取帧，将�
 
 ```text
 HikCapture
-  -> preprocessFrame
+  -> preprocess
   -> filterLightBars
   -> matchArmors
   -> solvePnp
@@ -49,7 +49,7 @@ HikCapture
 
   对应文件：
 
-  - src/armor_preprocessor.cpp：灰度化、二值化、形态学处理和轮廓提取。
+  - detector/detector.cpp：灰度化、二值化、形态学处理和轮廓提取。
   - src/light_bar_filter.cpp：按照面积、长宽比、角度、填充率筛选灯条，并判断红蓝颜色。
   - src/armor_matcher.cpp：将两个同色灯条配对成装甲板，并区分大小装甲板。
   - src/pnp_solver.cpp：结合相机内参计算装甲板的旋转和平移。
@@ -84,7 +84,7 @@ HikCapture
 
 算法阈值不通过命令行传入，直接改代码中的默认参数：
 
-- 预处理参数：`ArmorPreprocessParams`
+- 预处理参数：`PreprocessParams`
 - 灯条筛选参数：`LightBarFilterParams`
 - 装甲板配对参数：`ArmorMatcherParams`
 - PnP 参数：`PnpSolverParams`
