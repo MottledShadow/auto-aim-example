@@ -10,6 +10,15 @@ set(CMAKE_CXX_COMPILER
 )
 
 set(CMAKE_SYSROOT "$ENV{HOME}/jetson-sysroot")
+
+# 编译器探测阶段默认会链接一个可执行文件，而交叉链接需要 sysroot 里的 CRT
+# 启动文件（Scrt1.o/crti.o，靠下面 -B 指向的 multiarch 目录才找得到）。改成只编译
+# 静态库，跳过链接，避免探测阶段因找不到 CRT 而 FATAL_ERROR。
+set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
+
+set(CMAKE_C_FLAGS_INIT
+    "-B${CMAKE_SYSROOT}/usr/lib/aarch64-linux-gnu/ -isystem ${CMAKE_SYSROOT}/usr/include/aarch64-linux-gnu"
+)
 set(CMAKE_CXX_FLAGS_INIT
     "-B${CMAKE_SYSROOT}/usr/lib/aarch64-linux-gnu/ -isystem ${CMAKE_SYSROOT}/usr/include/aarch64-linux-gnu"
 )
