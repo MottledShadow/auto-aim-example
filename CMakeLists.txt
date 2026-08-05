@@ -6,8 +6,6 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-set(TARGET_NAME hik_capture)
-
 find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs highgui calib3d)
 find_package(Threads REQUIRED)
 
@@ -32,80 +30,6 @@ if(NOT MVCAM_LIBRARY)
         "Cannot find MvCameraControl in ${MVCAM_LIBRARY_DIR}. "
         "Set MVCAM_ROOT or MVCAM_LIBRARY_DIR when configuring CMake.")
 endif()
-
-add_executable(${TARGET_NAME}
-    src/main.cpp
-    src/hik_capture.cpp
-    src/debug_draw.cpp
-    src/vision_pipeline.cpp
-    src/armor_preprocessor.cpp
-    src/light_bar_filter.cpp
-    src/armor_matcher.cpp
-    src/pnp_solver.cpp
-)
-
-target_include_directories(${TARGET_NAME}
-    PRIVATE
-        "${PROJECT_SOURCE_DIR}/include"
-        "${MVCAM_INCLUDE_DIR}"
-)
-
-target_link_libraries(${TARGET_NAME}
-    PRIVATE
-        ${OpenCV_LIBS}
-        "${MVCAM_LIBRARY}"
-)
-
-if(MSVC)
-    target_compile_options(${TARGET_NAME} PRIVATE /W4)
-else()
-    target_compile_options(${TARGET_NAME} PRIVATE -Wall -Wextra -Wpedantic)
-endif()
-
-set_target_properties(${TARGET_NAME}
-    PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}"
-        BUILD_RPATH "${MVCAM_LIBRARY_DIR}"
-        INSTALL_RPATH "${MVCAM_LIBRARY_DIR}"
-)
-
-add_custom_command(
-    TARGET ${TARGET_NAME}
-    POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "${PROJECT_SOURCE_DIR}/config"
-            "$<TARGET_FILE_DIR:${TARGET_NAME}>/config"
-)
-
-add_executable(calibrate_camera
-    src/calibrate_main.cpp
-    src/hik_capture.cpp
-)
-
-target_include_directories(calibrate_camera
-    PRIVATE
-        "${PROJECT_SOURCE_DIR}/include"
-        "${MVCAM_INCLUDE_DIR}"
-)
-
-target_link_libraries(calibrate_camera
-    PRIVATE
-        ${OpenCV_LIBS}
-        "${MVCAM_LIBRARY}"
-)
-
-if(MSVC)
-    target_compile_options(calibrate_camera PRIVATE /W4)
-else()
-    target_compile_options(calibrate_camera PRIVATE -Wall -Wextra -Wpedantic)
-endif()
-
-set_target_properties(calibrate_camera
-    PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}"
-        BUILD_RPATH "${MVCAM_LIBRARY_DIR}"
-        INSTALL_RPATH "${MVCAM_LIBRARY_DIR}"
-)
 
 add_executable(hik_camera_test
     tests/hik_camera_test.cpp
