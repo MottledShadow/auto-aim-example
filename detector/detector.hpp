@@ -9,10 +9,7 @@ namespace auto_aim
 
 struct PreprocessParams
 {
-    int binary_threshold = 20;
-    int open_kernel_size = 5;
-    int close_kernel_size = 5;
-    int morph_iterations = 1;
+    int binary_threshold = 125;
 };
 
 struct ContourCandidate

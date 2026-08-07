@@ -23,16 +23,6 @@ ArmorPreprocessResult preprocess(const cv::Mat& frame, const PreprocessParams& p
         255,
         cv::THRESH_BINARY);
 
-    //开闭运算降噪
-    const cv::Mat open_kernel = cv::getStructuringElement(
-        cv::MORPH_RECT, cv::Size(params.open_kernel_size, params.open_kernel_size));
-    cv::morphologyEx(
-        result.binary, result.binary, cv::MORPH_OPEN, open_kernel, cv::Point(-1, -1), params.morph_iterations);
-    const cv::Mat close_kernel = cv::getStructuringElement(
-        cv::MORPH_RECT, cv::Size(params.close_kernel_size, params.close_kernel_size));
-    cv::morphologyEx(
-        result.binary, result.binary, cv::MORPH_CLOSE, close_kernel, cv::Point(-1, -1), params.morph_iterations);
-
     //寻找轮廓
     std::vector<std::vector<cv::Point>> contours;
     cv::Mat contour_input = result.binary.clone();
