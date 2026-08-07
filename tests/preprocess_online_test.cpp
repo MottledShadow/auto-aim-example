@@ -18,17 +18,16 @@ namespace
 {
 
 //最新帧槽：只保最新一份，被覆盖写入。序号变化即代表有新数据（和相机的 LatestImagesOnly 一致）
-template <typename T>
 struct LatestSlot
 {
     std::mutex mutex;
     std::condition_variable ready;
-    T payload;
+    cv::Mat payload;
     std::uint64_t seq = 0;
     std::atomic_bool running{true};
 
     //生产者：覆盖 payload，序号 +1，唤醒一个消费者
-    void publish(T value)
+    void publish(cv::Mat value)
     {
         {
             std::lock_guard<std::mutex> lock(mutex);
@@ -39,7 +38,7 @@ struct LatestSlot
     }
 
     //消费者：等到有比 consumed 更新的数据或停止；返回 false 表示该退出了
-    bool wait(std::uint64_t& consumed, T& out)
+    bool wait(std::uint64_t& consumed, cv::Mat& out)
     {
         std::unique_lock<std::mutex> lock(mutex);
         ready.wait(lock, [&] { return seq != consumed || !running; });
@@ -60,12 +59,8 @@ struct LatestSlot
     }
 };
 
-//预处理产出的一对展示图
-struct DisplayPair
-{
-    cv::Mat binary;
-    cv::Mat vis;
-};
+//合并窗口的目标宽度：二值图 + 轮廓图上下并排后整体缩放到这个宽度
+constexpr int kDisplayWidth = 640;
 
 //在原图上画候选轮廓、最小外接矩形、fitLine 中心线、面积数字（沿用离线测试的画法）
 void drawCandidates(cv::Mat& vis, const std::vector<auto_aim::ContourCandidate>& candidates)
@@ -118,9 +113,9 @@ int run()
         return 1;
     }
 
-    //两级流水线各一个最新帧槽：相机原图 → 预处理产出
-    LatestSlot<cv::Mat> slotRaw;
-    LatestSlot<DisplayPair> slotVis;
+    //两级流水线各一个最新帧槽：相机原图 → 预处理产出（并排缩放后的单张展示图）
+    LatestSlot slotRaw;
+    LatestSlot slotVis;
 
     //取帧线程：循环取最新一帧 BGR 图，发布到 slotRaw
     std::thread captureThread([&]
@@ -150,26 +145,31 @@ int run()
         {
             const auto_aim::ArmorPreprocessResult processed = auto_aim::preprocess(frame);
 
-            //二值图转成 3 通道，方便和另一个窗口一致
-            DisplayPair pair;
-            cv::cvtColor(processed.binary, pair.binary, cv::COLOR_GRAY2BGR);
+            //二值图转成 3 通道，方便和另一半并排
+            cv::Mat binary;
+            cv::cvtColor(processed.binary, binary, cv::COLOR_GRAY2BGR);
 
             //在原图 clone 上画轮廓、最小矩形、中心线、面积
-            pair.vis = frame.clone();
-            drawCandidates(pair.vis, processed.candidates);
+            cv::Mat vis = frame.clone();
+            drawCandidates(vis, processed.candidates);
 
-            slotVis.publish(std::move(pair));
+            //上二值、下轮廓上下并排成一张，再整体缩放到目标宽度
+            cv::Mat combined;
+            cv::vconcat(binary, vis, combined);
+            const double scale = static_cast<double>(kDisplayWidth) / combined.cols;
+            cv::resize(combined, combined, cv::Size(), scale, scale, cv::INTER_AREA);
+
+            slotVis.publish(std::move(combined));
         }
     });
 
     //主线程负责显示：HighGUI 的 imshow/waitKey 必须在主线程
-    std::cout << "两个窗口：binary 二值化，contours 轮廓+最小矩形；q/ESC 退出\n";
+    std::cout << "一个窗口：上二值化，下轮廓+最小矩形；q/ESC 退出\n";
     std::uint64_t consumed = 0;
-    DisplayPair pair;
-    while (slotVis.wait(consumed, pair))
+    cv::Mat view;
+    while (slotVis.wait(consumed, view))
     {
-        cv::imshow("binary", pair.binary);
-        cv::imshow("contours", pair.vis);
+        cv::imshow("preprocess", view);
         const int key = cv::waitKey(1);
         if (key == 'q' || key == 'Q' || key == 27)
         {
