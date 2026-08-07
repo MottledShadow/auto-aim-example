@@ -1,7 +1,9 @@
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <cstdint>
 #include <exception>
+#include <iomanip>
 #include <iostream>
 #include <mutex>
 #include <string>
@@ -18,16 +20,17 @@ namespace
 {
 
 //最新帧槽：只保最新一份，被覆盖写入。序号变化即代表有新数据（和相机的 LatestImagesOnly 一致）
+template <typename T>
 struct LatestSlot
 {
     std::mutex mutex;
     std::condition_variable ready;
-    cv::Mat payload;
+    T payload;
     std::uint64_t seq = 0;
     std::atomic_bool running{true};
 
     //生产者：覆盖 payload，序号 +1，唤醒一个消费者
-    void publish(cv::Mat value)
+    void publish(T value)
     {
         {
             std::lock_guard<std::mutex> lock(mutex);
@@ -38,7 +41,7 @@ struct LatestSlot
     }
 
     //消费者：等到有比 consumed 更新的数据或停止；返回 false 表示该退出了
-    bool wait(std::uint64_t& consumed, cv::Mat& out)
+    bool wait(std::uint64_t& consumed, T& out)
     {
         std::unique_lock<std::mutex> lock(mutex);
         ready.wait(lock, [&] { return seq != consumed || !running; });
@@ -61,6 +64,13 @@ struct LatestSlot
 
 //合并窗口的目标宽度：二值图 + 轮廓图上下并排后整体缩放到这个宽度
 constexpr int kDisplayWidth = 640;
+
+//预处理线程交给显示线程的东西：原图 + 检测结果（binary + candidates），绘图交给显示线程做
+struct FrameResult
+{
+    cv::Mat frame;
+    auto_aim::ArmorPreprocessResult processed;
+};
 
 //在原图上画候选轮廓、最小外接矩形、fitLine 中心线、面积数字（沿用离线测试的画法）
 void drawCandidates(cv::Mat& vis, const std::vector<auto_aim::ContourCandidate>& candidates)
@@ -113,9 +123,13 @@ int run()
         return 1;
     }
 
-    //两级流水线各一个最新帧槽：相机原图 → 预处理产出（并排缩放后的单张展示图）
-    LatestSlot slotRaw;
-    LatestSlot slotVis;
+    //两级流水线各一个最新帧槽：相机原图 → 预处理产出（原图+检测结果，绘图留给显示线程）
+    LatestSlot<cv::Mat> slotRaw;
+    LatestSlot<FrameResult> slotVis;
+
+    //帧率计数：取帧线程累加 captureCount，预处理线程累加 detectCount，主线程按秒读差值
+    std::atomic<std::uint64_t> captureCount{0};
+    std::atomic<std::uint64_t> detectCount{0};
 
     //取帧线程：循环取最新一帧 BGR 图，发布到 slotRaw
     std::thread captureThread([&]
@@ -131,45 +145,68 @@ int run()
                 break;
             }
             slotRaw.publish(frame.image.clone());
+            ++captureCount;
         }
         //取帧结束，通知下游别再等了
         slotVis.stop();
     });
 
-    //预处理线程：等最新原图 → 预处理 → 生成二值图和轮廓可视化图，发布到 slotVis
+    //预处理线程：只跑 preprocess()，把原图+检测结果发给显示线程（绘图/缩放不在这里做）
     std::thread preprocessThread([&]
     {
         std::uint64_t consumed = 0;
         cv::Mat frame;
         while (slotRaw.wait(consumed, frame))
         {
-            const auto_aim::ArmorPreprocessResult processed = auto_aim::preprocess(frame);
-
-            //二值图转成 3 通道，方便和另一半并排
-            cv::Mat binary;
-            cv::cvtColor(processed.binary, binary, cv::COLOR_GRAY2BGR);
-
-            //在原图 clone 上画轮廓、最小矩形、中心线、面积
-            cv::Mat vis = frame.clone();
-            drawCandidates(vis, processed.candidates);
-
-            //上二值、下轮廓上下并排成一张，再整体缩放到目标宽度
-            cv::Mat combined;
-            cv::vconcat(binary, vis, combined);
-            const double scale = static_cast<double>(kDisplayWidth) / combined.cols;
-            cv::resize(combined, combined, cv::Size(), scale, scale, cv::INTER_AREA);
-
-            slotVis.publish(std::move(combined));
+            FrameResult output;
+            output.frame = frame;
+            output.processed = auto_aim::preprocess(frame);
+            slotVis.publish(std::move(output));
+            ++detectCount;
         }
     });
 
-    //主线程负责显示：HighGUI 的 imshow/waitKey 必须在主线程
+    //主线程负责显示+统计：HighGUI 的 imshow/waitKey 必须在主线程，绘图/缩放也放这里
     std::cout << "一个窗口：上二值化，下轮廓+最小矩形；q/ESC 退出\n";
     std::uint64_t consumed = 0;
-    cv::Mat view;
-    while (slotVis.wait(consumed, view))
+    FrameResult result_frame;
+    //帧率打印基准：每秒用增量算一次 FPS
+    auto lastPrint = std::chrono::steady_clock::now();
+    std::uint64_t lastCapture = 0;
+    std::uint64_t lastDetect = 0;
+    while (slotVis.wait(consumed, result_frame))
     {
-        cv::imshow("preprocess", view);
+        //二值图转成 3 通道，方便和另一半并排
+        cv::Mat binary;
+        cv::cvtColor(result_frame.processed.binary, binary, cv::COLOR_GRAY2BGR);
+
+        //在原图 clone 上画轮廓、最小矩形、中心线、面积
+        cv::Mat vis = result_frame.frame.clone();
+        drawCandidates(vis, result_frame.processed.candidates);
+
+        //上二值、下轮廓上下并排成一张，再整体缩放到目标宽度
+        cv::Mat combined;
+        cv::vconcat(binary, vis, combined);
+        const double scale = static_cast<double>(kDisplayWidth) / combined.cols;
+        cv::resize(combined, combined, cv::Size(), scale, scale, cv::INTER_AREA);
+
+        cv::imshow("preprocess", combined);
+
+        //每满一秒打印一次取帧 FPS 和检测 FPS
+        const auto now = std::chrono::steady_clock::now();
+        const double elapsed = std::chrono::duration<double>(now - lastPrint).count();
+        if (elapsed >= 1.0)
+        {
+            const std::uint64_t capture = captureCount.load();
+            const std::uint64_t detect = detectCount.load();
+            std::cout << std::fixed << std::setprecision(1)
+                      << "capture_fps=" << (capture - lastCapture) / elapsed
+                      << " detect_fps=" << (detect - lastDetect) / elapsed << '\n';
+            lastPrint = now;
+            lastCapture = capture;
+            lastDetect = detect;
+        }
+
         const int key = cv::waitKey(1);
         if (key == 'q' || key == 'Q' || key == 27)
         {
