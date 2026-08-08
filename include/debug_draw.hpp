@@ -9,8 +9,8 @@ namespace auto_aim
 
 cv::Mat makeDebugPreview(
     const cv::Mat& frame,
-    const ArmorPreprocessResult& preprocess,
-    const LightBarFilterResult& light_bars,
+    const PreprocessResult& preprocess,
+    const std::vector<LightBar>& light_bars,
     const ArmorMatchResult& armors,
     bool show_binary);
 

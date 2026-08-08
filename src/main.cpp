@@ -113,7 +113,7 @@ int run(const AppOptions& options)
                   << std::dec << std::nouppercase
                   << " rects=" << result.preprocess.candidates.size()
                   << " lines=" << result.preprocess.candidates.size()
-                  << " lights=" << result.light_bars.candidates.size()
+                  << " lights=" << result.light_bars.size()
                   << " armors=" << result.armors.candidates.size()
                   << " poses=" << result.pnp.poses.size();
 

@@ -11,13 +11,6 @@
 namespace auto_aim
 {
 
-enum class LightColor
-{
-    Unknown = 0,
-    Red,
-    Blue,
-};
-
 enum class ArmorType
 {
     Unknown = 0,
@@ -25,38 +18,12 @@ enum class ArmorType
     Large,
 };
 
-class LightBar
+struct Armor
 {
-public:
-    LightColor color = LightColor::Unknown;
-    cv::Point2f top;
-    cv::Point2f bottom;
-    cv::Point2f center;
-    float length = 0.0F;
-    float width = 0.0F;
-    float angle = 0.0F;
-    float area = 0.0F;
-};
-
-class Armor
-{
-public:
     LightBar left_light;
     LightBar right_light;
     cv::Point2f center;
     ArmorType type = ArmorType::Unknown;
-};
-
-struct LightBarFilterParams
-{
-    double min_area = 30.0;
-    double max_area = 20000.0;
-    double min_aspect_ratio = 2.0;
-    double max_aspect_ratio = 30.0;
-    double min_line_angle_deg = 0.0;
-    double max_line_angle_deg = 30.0;
-    double min_fill_ratio = 0.75;
-    double max_fill_ratio = 1.0;
 };
 
 struct ArmorMatcherParams
@@ -77,11 +44,6 @@ struct PnpSolverParams
     double large_armor_height = 55.0;
 
     int solve_pnp_method = cv::SOLVEPNP_IPPE;
-};
-
-struct LightBarFilterResult
-{
-    std::vector<LightBar> candidates;
 };
 
 struct ArmorMatchResult
@@ -111,20 +73,15 @@ struct Calibration
 
 struct VisionPipelineResult
 {
-    ArmorPreprocessResult preprocess;
-    LightBarFilterResult light_bars;
+    PreprocessResult preprocess;
+    std::vector<LightBar> light_bars;
     ArmorMatchResult armors;
     PnpSolveResult pnp;
 };
 
 std::vector<cv::Point2f> armorCorners(const LightBar& left, const LightBar& right);
 
-LightBarFilterResult filterLightBars(
-    const cv::Mat& frame,
-    const ArmorPreprocessResult& preprocess,
-    const LightBarFilterParams& params = {});
-
-ArmorMatchResult matchArmors(const LightBarFilterResult& light_bars, const ArmorMatcherParams& params = {});
+ArmorMatchResult matchArmors(const std::vector<LightBar>& light_bars, const ArmorMatcherParams& params = {});
 
 Calibration loadCalibration(const std::string& path = "config/camera_calibration.yml");
 

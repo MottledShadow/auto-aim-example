@@ -64,10 +64,10 @@ Armor makeArmor(const LightBar& left, const LightBar& right, ArmorType type)
 
 } // namespace
 
-ArmorMatchResult matchArmors(const LightBarFilterResult& light_bars, const ArmorMatcherParams& params)
+ArmorMatchResult matchArmors(const std::vector<LightBar>& light_bars, const ArmorMatcherParams& params)
 {
     ArmorMatchResult result;
-    const std::vector<LightBar>& lights = light_bars.candidates;
+    const std::vector<LightBar>& lights = light_bars;
 
     for (std::size_t i = 0; i < lights.size(); ++i)
     {

@@ -136,8 +136,8 @@ void drawArmors(cv::Mat& image, const std::vector<Armor>& armors)
 
 cv::Mat makeDebugPreview(
     const cv::Mat& frame,
-    const ArmorPreprocessResult& preprocess,
-    const LightBarFilterResult& light_bars,
+    const PreprocessResult& preprocess,
+    const std::vector<LightBar>& light_bars,
     const ArmorMatchResult& armors,
     bool show_binary)
 {
@@ -155,7 +155,7 @@ cv::Mat makeDebugPreview(
         preview = frame.clone();
     }
 
-    drawFilteredLightBarBoxes(preview, light_bars.candidates);
+    drawFilteredLightBarBoxes(preview, light_bars);
     drawCandidateCenterLines(preview, preprocess.candidates);
     drawArmors(preview, armors.candidates);
     return preview;

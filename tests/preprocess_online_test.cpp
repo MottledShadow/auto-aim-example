@@ -69,7 +69,7 @@ constexpr int kDisplayWidth = 640;
 struct FrameResult
 {
     cv::Mat frame;
-    auto_aim::ArmorPreprocessResult processed;
+    auto_aim::PreprocessResult processed;
 };
 
 //在原图上画候选轮廓、最小外接矩形、fitLine 中心线、面积数字（沿用离线测试的画法）

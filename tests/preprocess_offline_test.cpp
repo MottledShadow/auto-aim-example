@@ -47,7 +47,7 @@ int main(int argc, char** argv)
         }
 
         //跑 detector 的预处理
-        const auto_aim::ArmorPreprocessResult result = auto_aim::preprocess(frame, params);
+        const auto_aim::PreprocessResult result = auto_aim::preprocess(frame, params);
 
         //取文件名（不含目录和扩展名）作为输出前缀
         const size_t slash = file.find_last_of("/\\");
