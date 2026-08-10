@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -62,8 +63,12 @@ struct LatestSlot
     }
 };
 
-//合并窗口的目标宽度：二值图 + 轮廓图上下并排后整体缩放到这个宽度
-constexpr int kDisplayWidth = 640;
+//目标显示器分辨率：两张二值图左右并排后整体等比缩放到刚好放进这个尺寸
+constexpr int kScreenWidth = 1920;
+constexpr int kScreenHeight = 1080;
+
+//红蓝通道相减法的二值化阈值（相减后差值范围较小，视效果再调）
+constexpr int kChannelSubThreshold = 150;
 
 //预处理线程交给显示线程的东西：原图 + 检测结果（binary + candidates），绘图交给显示线程做
 struct FrameResult
@@ -71,45 +76,6 @@ struct FrameResult
     cv::Mat frame;
     auto_aim::PreprocessResult processed;
 };
-
-//在原图上画候选轮廓、最小外接矩形、fitLine 中心线、面积数字（沿用离线测试的画法）
-void drawCandidates(cv::Mat& vis, const std::vector<auto_aim::ContourCandidate>& candidates)
-{
-    for (const auto& candidate : candidates)
-    {
-        //候选轮廓（绿色）
-        const std::vector<std::vector<cv::Point>> one_contour{candidate.contour};
-        cv::drawContours(vis, one_contour, -1, cv::Scalar(0, 255, 0), 1);
-
-        //最小外接矩形（黄色）
-        cv::Point2f corners[4];
-        candidate.rect.points(corners);
-        for (int i = 0; i < 4; ++i)
-        {
-            cv::line(vis, corners[i], corners[(i + 1) % 4], cv::Scalar(0, 255, 255), 1);
-        }
-
-        //fitLine 中心线（红色），沿方向向量往两边延伸
-        const float vx = candidate.center_line[0];
-        const float vy = candidate.center_line[1];
-        const float x0 = candidate.center_line[2];
-        const float y0 = candidate.center_line[3];
-        const float length = 30.0F;
-        const cv::Point p1(cvRound(x0 - vx * length), cvRound(y0 - vy * length));
-        const cv::Point p2(cvRound(x0 + vx * length), cvRound(y0 + vy * length));
-        cv::line(vis, p1, p2, cv::Scalar(0, 0, 255), 1);
-
-        //面积数字
-        cv::putText(
-            vis,
-            "A=" + std::to_string(static_cast<int>(candidate.area)),
-            candidate.rect.center,
-            cv::FONT_HERSHEY_SIMPLEX,
-            0.4,
-            cv::Scalar(0, 0, 255),
-            1);
-    }
-}
 
 int run()
 {
@@ -160,14 +126,17 @@ int run()
         {
             FrameResult output;
             output.frame = frame;
-            output.processed = auto_aim::preprocess(frame);
+            //左panel固定用灰度法，与右panel内联的通道相减对比
+            auto_aim::PreprocessParams gray_params;
+            gray_params.method = auto_aim::BinaryMethod::Gray;
+            output.processed = auto_aim::preprocess(frame, gray_params);
             slotVis.publish(std::move(output));
             ++detectCount;
         }
     });
 
     //主线程负责显示+统计：HighGUI 的 imshow/waitKey 必须在主线程，绘图/缩放也放这里
-    std::cout << "一个窗口：上二值化，下轮廓+最小矩形；q/ESC 退出\n";
+    std::cout << "一个窗口：左灰度阈值二值化，右红蓝通道相减二值化；q/ESC 退出\n";
     std::uint64_t consumed = 0;
     FrameResult result_frame;
     //帧率打印基准：每秒用增量算一次 FPS
@@ -176,21 +145,47 @@ int run()
     std::uint64_t lastDetect = 0;
     while (slotVis.wait(consumed, result_frame))
     {
-        //二值图转成 3 通道，方便和另一半并排
-        cv::Mat binary;
-        cv::cvtColor(result_frame.processed.binary, binary, cv::COLOR_GRAY2BGR);
+        //方法一：灰度阈值二值图（preprocess 的产出），转 BGR 方便并排和加标注
+        cv::Mat panel_gray;
+        cv::cvtColor(result_frame.processed.binary, panel_gray, cv::COLOR_GRAY2BGR);
 
-        //在原图 clone 上画轮廓、最小矩形、中心线、面积
-        cv::Mat vis = result_frame.frame.clone();
-        drawCandidates(vis, result_frame.processed.candidates);
+        //方法二：红蓝通道相减二值化，分离 BGR
+        std::vector<cv::Mat> channels;
+        cv::split(result_frame.frame, channels);
 
-        //上二值、下轮廓上下并排成一张，再整体缩放到目标宽度
+        //R-B 突出红色、B-R 突出蓝色，饱和相减（负值截到 0）
+        cv::Mat diff_rb;
+        cv::Mat diff_br;
+        cv::subtract(channels[2], channels[0], diff_rb);
+        cv::subtract(channels[0], channels[2], diff_br);
+
+        //各自二值化后取并集，红蓝灯条都保留，再转 BGR
+        cv::Mat bin_r;
+        cv::Mat bin_b;
+        cv::Mat channel_binary;
+        cv::threshold(diff_rb, bin_r, kChannelSubThreshold, 255, cv::THRESH_BINARY);
+        cv::threshold(diff_br, bin_b, kChannelSubThreshold, 255, cv::THRESH_BINARY);
+        cv::bitwise_or(bin_r, bin_b, channel_binary);
+        cv::Mat panel_channel;
+        cv::cvtColor(channel_binary, panel_channel, cv::COLOR_GRAY2BGR);
+
+        //左右各打一个方法名标注
+        cv::putText(panel_gray, "gray thresh", cv::Point(10, 30),
+                    cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(0, 255, 0), 2);
+        cv::putText(panel_channel, "R-B | B-R", cv::Point(10, 30),
+                    cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(0, 255, 0), 2);
+
+        //左右并排成一张
         cv::Mat combined;
-        cv::vconcat(binary, vis, combined);
-        const double scale = static_cast<double>(kDisplayWidth) / combined.cols;
+        cv::hconcat(panel_gray, panel_channel, combined);
+
+        //整体等比缩放到刚好放进 1920x1080（不裁切，保留完整画面便于对比）
+        const double scale = std::min(
+            static_cast<double>(kScreenWidth) / combined.cols,
+            static_cast<double>(kScreenHeight) / combined.rows);
         cv::resize(combined, combined, cv::Size(), scale, scale, cv::INTER_AREA);
 
-        cv::imshow("preprocess", combined);
+        cv::imshow("binarize compare", combined);
 
         //每满一秒打印一次取帧 FPS 和检测 FPS
         const auto now = std::chrono::steady_clock::now();

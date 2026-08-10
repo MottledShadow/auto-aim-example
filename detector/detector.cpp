@@ -12,17 +12,40 @@ PreprocessResult preprocess(const cv::Mat& frame, const PreprocessParams& params
 {
     PreprocessResult result;
 
-    //转为灰度图
-    cv::Mat gray;
-    cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
-
-    //二值化
-    cv::threshold(
-        gray,
-        result.binary,
-        params.binary_threshold,
-        255,
-        cv::THRESH_BINARY);
+    //二值化：按标志位选灰度阈值法或红蓝通道相减法
+    if (params.method == BinaryMethod::Gray)
+    {
+        //灰度阈值法：转灰度后直接阈值化
+        cv::Mat gray;
+        cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
+        cv::threshold(
+            gray,
+            result.binary,
+            params.binary_threshold,
+            255,
+            cv::THRESH_BINARY);
+    }
+    else
+    {
+        //红蓝通道相减法：拆 BGR，按目标颜色只算一路（Red 用 R-B，Blue 用 B-R），负值截到 0 后阈值化
+        std::vector<cv::Mat> channels;
+        cv::split(frame, channels);
+        cv::Mat diff;
+        if (params.target_color == LightColor::Red)
+        {
+            cv::subtract(channels[2], channels[0], diff);
+        }
+        else
+        {
+            cv::subtract(channels[0], channels[2], diff);
+        }
+        cv::threshold(
+            diff,
+            result.binary,
+            params.channel_sub_threshold,
+            255,
+            cv::THRESH_BINARY);
+    }
 
     //寻找轮廓
     std::vector<std::vector<cv::Point>> contours;

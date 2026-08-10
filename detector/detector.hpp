@@ -7,9 +7,25 @@
 namespace auto_aim
 {
 
+enum class LightColor
+{
+    Unknown = 0,
+    Red,
+    Blue,
+};
+
+enum class BinaryMethod
+{
+    Gray,            // 灰度阈值二值化
+    ChannelSubtract, // 红蓝通道相减二值化
+};
+
 struct PreprocessParams
 {
-    int binary_threshold = 125;
+    BinaryMethod method = BinaryMethod::ChannelSubtract; // 默认走通道相减
+    LightColor target_color = LightColor::Red;           // 通道相减时算哪一路（Red→R-B，Blue→B-R）
+    int binary_threshold = 125;        // 灰度法阈值
+    int channel_sub_threshold = 150;   // 通道相减法阈值
 };
 
 struct ContourCandidate
@@ -27,13 +43,6 @@ struct PreprocessResult
 };
 
 PreprocessResult preprocess(const cv::Mat& frame, const PreprocessParams& params = {});
-
-enum class LightColor
-{
-    Unknown = 0,
-    Red,
-    Blue,
-};
 
 struct LightBar
 {
