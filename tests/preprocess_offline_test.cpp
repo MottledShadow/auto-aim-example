@@ -1,4 +1,3 @@
-#include <ctime>
 #include <filesystem>
 #include <iostream>
 #include <string>
@@ -15,11 +14,18 @@ int main(int argc, char** argv)
     const std::string input_dir = (argc > 1) ? argv[1] : "captures";
     const std::string output_root = (argc > 2) ? argv[2] : "test_output";
 
-    //用当前时间戳生成本次测试的文件夹名，方便区分是哪一次做的测试
-    const std::time_t now = std::time(nullptr);
-    char stamp[32];
-    std::strftime(stamp, sizeof(stamp), "%Y%m%d_%H%M%S", std::localtime(&now));
-    const std::string output_dir = output_root + "/test_" + stamp;
+    //两套参数：灰度法 + 通道相减法（默认 ChannelSubtract + Red），每张图各跑一次
+    auto_aim::PreprocessParams gray_params;
+    gray_params.method = auto_aim::BinaryMethod::Gray;
+    auto_aim::PreprocessParams channel_params;
+
+    //文件夹名带上关键参数（灰度阈值 + 通道相减阈值 + 目标颜色），比时间戳直观
+    const std::string color_tag =
+        (channel_params.target_color == auto_aim::LightColor::Red) ? "red" : "blue";
+    const std::string output_dir = output_root + "/test_gray"
+        + std::to_string(gray_params.binary_threshold)
+        + "_ch" + std::to_string(channel_params.channel_sub_threshold)
+        + "_" + color_tag;
 
     //列出输入目录里的所有 png 图片
     std::vector<cv::String> files;
@@ -35,10 +41,6 @@ int main(int argc, char** argv)
     std::cout << "input=" << input_dir << " images=" << files.size()
               << " output=" << output_dir << '\n';
 
-    //两套参数：灰度法 + 通道相减法（默认 ChannelSubtract + Red），每张图各跑一次
-    auto_aim::PreprocessParams gray_params;
-    gray_params.method = auto_aim::BinaryMethod::Gray;
-    auto_aim::PreprocessParams channel_params;
     for (const auto& file : files)
     {
         //读入一张图
