@@ -35,7 +35,10 @@ int main(int argc, char** argv)
     std::cout << "input=" << input_dir << " images=" << files.size()
               << " output=" << output_dir << '\n';
 
-    auto_aim::PreprocessParams params;
+    //两套参数：灰度法 + 通道相减法（默认 ChannelSubtract + Red），每张图各跑一次
+    auto_aim::PreprocessParams gray_params;
+    gray_params.method = auto_aim::BinaryMethod::Gray;
+    auto_aim::PreprocessParams channel_params;
     for (const auto& file : files)
     {
         //读入一张图
@@ -46,20 +49,22 @@ int main(int argc, char** argv)
             continue;
         }
 
-        //跑 detector 的预处理
-        const auto_aim::PreprocessResult result = auto_aim::preprocess(frame, params);
+        //跑 detector 的预处理：灰度法和通道相减法各一次
+        const auto_aim::PreprocessResult gray_result = auto_aim::preprocess(frame, gray_params);
+        const auto_aim::PreprocessResult channel_result = auto_aim::preprocess(frame, channel_params);
 
         //取文件名（不含目录和扩展名）作为输出前缀
         const size_t slash = file.find_last_of("/\\");
         const size_t dot = file.find_last_of('.');
         const std::string stem = file.substr(slash + 1, dot - slash - 1);
 
-        //存二值图
-        cv::imwrite(output_dir + "/" + stem + "_binary.png", result.binary);
+        //两种方法的二值图各存一张
+        cv::imwrite(output_dir + "/" + stem + "_binary_gray.png", gray_result.binary);
+        cv::imwrite(output_dir + "/" + stem + "_binary_channel.png", channel_result.binary);
 
-        //在原图上画出候选轮廓、最小外接矩形、中心线和面积数字
+        //在原图上画出候选轮廓、最小外接矩形、中心线和面积数字（用生产默认路径 channel_result）
         cv::Mat vis = frame.clone();
-        for (const auto& candidate : result.candidates)
+        for (const auto& candidate : channel_result.candidates)
         {
             //候选轮廓（绿色）
             const std::vector<std::vector<cv::Point>> one_contour{candidate.contour};
@@ -95,7 +100,9 @@ int main(int argc, char** argv)
         }
         cv::imwrite(output_dir + "/" + stem + "_vis.png", vis);
 
-        std::cout << stem << " candidates=" << result.candidates.size() << '\n';
+        std::cout << stem
+                  << " gray_candidates=" << gray_result.candidates.size()
+                  << " channel_candidates=" << channel_result.candidates.size() << '\n';
     }
 
     std::cout << "done, results in " << output_dir << '\n';

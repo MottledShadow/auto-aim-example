@@ -67,14 +67,12 @@ struct LatestSlot
 constexpr int kScreenWidth = 1920;
 constexpr int kScreenHeight = 1080;
 
-//红蓝通道相减法的二值化阈值（相减后差值范围较小，视效果再调）
-constexpr int kChannelSubThreshold = 150;
-
-//预处理线程交给显示线程的东西：原图 + 检测结果（binary + candidates），绘图交给显示线程做
+//预处理线程交给显示线程的东西：原图 + 两种方法的检测结果（binary + candidates），绘图交给显示线程做
 struct FrameResult
 {
     cv::Mat frame;
-    auto_aim::PreprocessResult processed;
+    auto_aim::PreprocessResult processed_gray;
+    auto_aim::PreprocessResult processed_channel;
 };
 
 int run()
@@ -126,10 +124,12 @@ int run()
         {
             FrameResult output;
             output.frame = frame;
-            //左panel固定用灰度法，与右panel内联的通道相减对比
+            //两种方法各跑一次：左panel灰度法，右panel通道相减法（默认目标红）
             auto_aim::PreprocessParams gray_params;
             gray_params.method = auto_aim::BinaryMethod::Gray;
-            output.processed = auto_aim::preprocess(frame, gray_params);
+            auto_aim::PreprocessParams channel_params;   //method 默认即 ChannelSubtract、target_color 默认 Red
+            output.processed_gray = auto_aim::preprocess(frame, gray_params);
+            output.processed_channel = auto_aim::preprocess(frame, channel_params);
             slotVis.publish(std::move(output));
             ++detectCount;
         }
@@ -147,32 +147,16 @@ int run()
     {
         //方法一：灰度阈值二值图（preprocess 的产出），转 BGR 方便并排和加标注
         cv::Mat panel_gray;
-        cv::cvtColor(result_frame.processed.binary, panel_gray, cv::COLOR_GRAY2BGR);
+        cv::cvtColor(result_frame.processed_gray.binary, panel_gray, cv::COLOR_GRAY2BGR);
 
-        //方法二：红蓝通道相减二值化，分离 BGR
-        std::vector<cv::Mat> channels;
-        cv::split(result_frame.frame, channels);
-
-        //R-B 突出红色、B-R 突出蓝色，饱和相减（负值截到 0）
-        cv::Mat diff_rb;
-        cv::Mat diff_br;
-        cv::subtract(channels[2], channels[0], diff_rb);
-        cv::subtract(channels[0], channels[2], diff_br);
-
-        //各自二值化后取并集，红蓝灯条都保留，再转 BGR
-        cv::Mat bin_r;
-        cv::Mat bin_b;
-        cv::Mat channel_binary;
-        cv::threshold(diff_rb, bin_r, kChannelSubThreshold, 255, cv::THRESH_BINARY);
-        cv::threshold(diff_br, bin_b, kChannelSubThreshold, 255, cv::THRESH_BINARY);
-        cv::bitwise_or(bin_r, bin_b, channel_binary);
+        //方法二：红蓝通道相减二值图（preprocess 的产出，默认目标红），转 BGR
         cv::Mat panel_channel;
-        cv::cvtColor(channel_binary, panel_channel, cv::COLOR_GRAY2BGR);
+        cv::cvtColor(result_frame.processed_channel.binary, panel_channel, cv::COLOR_GRAY2BGR);
 
         //左右各打一个方法名标注
         cv::putText(panel_gray, "gray thresh", cv::Point(10, 30),
                     cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(0, 255, 0), 2);
-        cv::putText(panel_channel, "R-B | B-R", cv::Point(10, 30),
+        cv::putText(panel_channel, "R-B (red)", cv::Point(10, 30),
                     cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(0, 255, 0), 2);
 
         //左右并排成一张
