@@ -23,9 +23,10 @@ enum class BinaryMethod
 struct PreprocessParams
 {
     BinaryMethod method = BinaryMethod::ChannelSubtract; // 默认走通道相减
-    LightColor target_color = LightColor::Red;           // 通道相减时算哪一路（Red→R-B，Blue→B-R）
-    int binary_threshold = 125;        // 灰度法阈值
-    int channel_sub_threshold = 75;   // 通道相减法阈值
+    LightColor target_color = LightColor::Blue;           // 通道相减时算哪一路（Red→R-B，Blue→B-R）
+    int binary_threshold = 125;              // 灰度法阈值
+    int channel_sub_threshold_red = 55;      // 通道相减法·红（R-B）阈值
+    int channel_sub_threshold_blue = 75;     // 通道相减法·蓝（B-R）阈值，蓝灯条要设更高
 };
 
 struct ContourCandidate
@@ -60,13 +61,13 @@ struct LightBar
 
 struct LightBarFilterParams
 {
-    double min_area = 30.0;
-    double max_area = 20000.0;
+    double min_area = 20.0;
+    double max_area = 6000.0;
     double min_aspect_ratio = 2.0;
-    double max_aspect_ratio = 30.0;
+    double max_aspect_ratio = 10.0;
     double min_line_angle_deg = 0.0;
-    double max_line_angle_deg = 30.0;
-    double min_fill_ratio = 0.75;
+    double max_line_angle_deg = 10.0;
+    double min_fill_ratio = 0.5;
     double max_fill_ratio = 1.0;
 };
 

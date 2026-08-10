@@ -35,18 +35,21 @@ PreprocessResult preprocess(const cv::Mat& frame, const PreprocessParams& params
         std::vector<cv::Mat> channels;
         cv::split(frame, channels);
         cv::Mat diff;
+        int channel_threshold;
         if (params.target_color == LightColor::Red)
         {
             cv::subtract(channels[2], channels[0], diff);
+            channel_threshold = params.channel_sub_threshold_red;
         }
         else
         {
             cv::subtract(channels[0], channels[2], diff);
+            channel_threshold = params.channel_sub_threshold_blue;
         }
         cv::threshold(
             diff,
             result.binary,
-            params.channel_sub_threshold,
+            channel_threshold,
             255,
             cv::THRESH_BINARY);
     }

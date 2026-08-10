@@ -20,11 +20,14 @@ int main(int argc, char** argv)
     auto_aim::PreprocessParams channel_params;
 
     //文件夹名带上关键参数（灰度阈值 + 通道相减阈值 + 目标颜色），比时间戳直观
-    const std::string color_tag =
-        (channel_params.target_color == auto_aim::LightColor::Red) ? "red" : "blue";
+    const bool channel_is_red = (channel_params.target_color == auto_aim::LightColor::Red);
+    const std::string color_tag = channel_is_red ? "red" : "blue";
+    const int channel_threshold = channel_is_red
+        ? channel_params.channel_sub_threshold_red
+        : channel_params.channel_sub_threshold_blue;
     const std::string output_dir = output_root + "/test_gray"
         + std::to_string(gray_params.binary_threshold)
-        + "_ch" + std::to_string(channel_params.channel_sub_threshold)
+        + "_ch" + std::to_string(channel_threshold)
         + "_" + color_tag;
 
     //列出输入目录里的所有 png 图片

@@ -108,6 +108,29 @@ set_target_properties(preprocess_offline_test
         RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}"
 )
 
+# 离线跑 detector 的灯条筛选测试：只读磁盘图片，把各候选的四项筛选指标标到图上，只依赖 OpenCV
+add_executable(lightbar_offline_test
+    tests/lightbar_offline_test.cpp
+    detector/detector.cpp
+)
+
+target_include_directories(lightbar_offline_test
+    PRIVATE
+        "${PROJECT_SOURCE_DIR}/detector"
+)
+
+target_link_libraries(lightbar_offline_test
+    PRIVATE
+        ${OpenCV_LIBS}
+)
+
+target_compile_options(lightbar_offline_test PRIVATE -Wall -Wextra -Wpedantic)
+
+set_target_properties(lightbar_offline_test
+    PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}"
+)
+
 # 在线跑 detector 的预处理测试：连相机实时取帧 → 预处理 → 双窗口显示（取帧/预处理/显示 各一线程）
 add_executable(preprocess_online_test
     tests/preprocess_online_test.cpp
