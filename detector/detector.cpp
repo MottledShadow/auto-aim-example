@@ -12,6 +12,10 @@ PreprocessResult preprocess(const cv::Mat& frame, const PreprocessParams& params
 {
     PreprocessResult result;
 
+    //记录二值图是用哪种方法/目标色产生的，供 filterLightBars 判断颜色是否已知
+    result.method = params.method;
+    result.target_color = params.target_color;
+
     //二值化：按标志位选灰度阈值法或红蓝通道相减法
     if (params.method == BinaryMethod::Gray)
     {
@@ -131,19 +135,29 @@ std::vector<LightBar> filterLightBars(
             continue;
         }
 
-        //在轮廓区域内取 BGR 均值判断红蓝
-        cv::Mat mask = cv::Mat::zeros(frame.size(), CV_8UC1);
-        cv::drawContours(mask, std::vector<std::vector<cv::Point>>{geom.contour}, 0, cv::Scalar(255), cv::FILLED);
-        const cv::Scalar mean = cv::mean(frame, mask);
+        //判定灯条颜色：按二值图的产生方法分流
         LightColor color = LightColor::Unknown;
-        if (mean[2] > mean[0])
+        if (preprocess.method == BinaryMethod::ChannelSubtract)
         {
-            color = LightColor::Red;
+            //通道相减只保留了目标色，颜色已知，无需再算均值
+            color = preprocess.target_color;
         }
-        else if (mean[0] > mean[2])
+        else
         {
-            color = LightColor::Blue;
+            //灰度法二值图不含颜色，取轮廓内 BGR 均值判红蓝
+            cv::Mat mask = cv::Mat::zeros(frame.size(), CV_8UC1);
+            cv::drawContours(mask, std::vector<std::vector<cv::Point>>{geom.contour}, 0, cv::Scalar(255), cv::FILLED);
+            const cv::Scalar mean = cv::mean(frame, mask);
+            if (mean[2] > mean[0])
+            {
+                color = LightColor::Red;
+            }
+            else if (mean[0] > mean[2])
+            {
+                color = LightColor::Blue;
+            }
         }
+
 
         //由外接矩形顶点求灯条上下两端点：取较短边方向的两条边中点，按 y 排序令 top 在上
         cv::Point2f vertices[4];
