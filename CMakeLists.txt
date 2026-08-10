@@ -160,3 +160,33 @@ set_target_properties(preprocess_online_test
         BUILD_RPATH "${MVCAM_LIBRARY_DIR}"
         INSTALL_RPATH "${MVCAM_LIBRARY_DIR}"
 )
+
+# 在线跑 detector 的灯条筛选测试：连相机实时取帧 → 预处理+筛选 → 单窗口逐候选标注四项指标（取帧/处理/显示 各一线程）
+add_executable(lightbar_online_test
+    tests/lightbar_online_test.cpp
+    hik_camera/hik_camera.cpp
+    detector/detector.cpp
+)
+
+target_include_directories(lightbar_online_test
+    PRIVATE
+        "${PROJECT_SOURCE_DIR}/hik_camera"
+        "${PROJECT_SOURCE_DIR}/detector"
+        "${MVCAM_INCLUDE_DIR}"
+)
+
+target_link_libraries(lightbar_online_test
+    PRIVATE
+        ${OpenCV_LIBS}
+        "${MVCAM_LIBRARY}"
+        Threads::Threads
+)
+
+target_compile_options(lightbar_online_test PRIVATE -Wall -Wextra -Wpedantic)
+
+set_target_properties(lightbar_online_test
+    PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}"
+        BUILD_RPATH "${MVCAM_LIBRARY_DIR}"
+        INSTALL_RPATH "${MVCAM_LIBRARY_DIR}"
+)

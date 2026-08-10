@@ -67,7 +67,7 @@ struct LightBarFilterParams
     double max_aspect_ratio = 10.0;
     double min_line_angle_deg = 0.0;
     double max_line_angle_deg = 10.0;
-    double min_fill_ratio = 0.5;
+    double min_fill_ratio = 0.4;
     double max_fill_ratio = 1.0;
 };
 
