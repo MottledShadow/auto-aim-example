@@ -1,8 +1,10 @@
 #pragma once
 
+#include <string>
 #include <vector>
 
 #include <opencv2/core.hpp>
+#include <opencv2/calib3d.hpp>
 
 namespace auto_aim
 {
@@ -23,7 +25,7 @@ enum class BinaryMethod
 struct PreprocessParams
 {
     BinaryMethod method = BinaryMethod::ChannelSubtract; // 默认走通道相减
-    LightColor target_color = LightColor::Red;           // 通道相减时算哪一路（Red→R-B，Blue→B-R）
+    LightColor target_color = LightColor::Blue;           // 通道相减时算哪一路（Red→R-B，Blue→B-R）
     int binary_threshold = 125;              // 灰度法阈值
     int channel_sub_threshold_red = 55;      // 通道相减法·红（R-B）阈值
     int channel_sub_threshold_blue = 75;     // 通道相减法·蓝（B-R）阈值，蓝灯条要设更高
@@ -42,7 +44,7 @@ struct PreprocessResult
     cv::Mat binary;
     std::vector<ContourCandidate> candidates;
     BinaryMethod method = BinaryMethod::ChannelSubtract;  // 该二值图用的方法
-    LightColor target_color = LightColor::Red;            // 通道相减法时的目标色
+    LightColor target_color = LightColor::Blue;            // 通道相减法时的目标色
 };
 
 PreprocessResult preprocess(const cv::Mat& frame, const PreprocessParams& params = {});
@@ -104,5 +106,38 @@ struct LightBarMatcherParams
 std::vector<Armor> matchArmors(
     const std::vector<LightBar>& light_bars,
     const LightBarMatcherParams& params = {});
+
+// PnP 位姿解算参数：装甲板物理尺寸(mm) + solvePnP 方法（尺寸暂沿用占位值）
+struct PnpSolverParams
+{
+    double small_armor_width = 130.0;
+    double small_armor_height = 60.0;
+    double large_armor_width = 230.0;
+    double large_armor_height = 55.0;
+    int solve_pnp_method = cv::SOLVEPNP_IPPE;
+};
+
+// 相机标定：内参矩阵、畸变系数；error 为空表示加载成功
+struct CameraCalibration
+{
+    cv::Mat camera_matrix;
+    cv::Mat dist_coeffs;
+    std::string error;
+};
+
+// 单块装甲板的位姿（相机坐标系下的旋转/平移向量）
+struct ArmorPose
+{
+    Armor armor;
+    cv::Mat rvec;
+    cv::Mat tvec;
+};
+
+CameraCalibration loadCalibration(const std::string& path = "config/camera_calibration.yml");
+
+std::vector<ArmorPose> solvePnp(
+    const std::vector<Armor>& armors,
+    const CameraCalibration& calibration,
+    const PnpSolverParams& params = {});
 
 } // namespace auto_aim

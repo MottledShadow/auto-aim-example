@@ -160,6 +160,32 @@ set_target_properties(armor_offline_test
         RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}"
 )
 
+# 离线跑 detector 的 PnP 位姿解算测试：读磁盘图片 + 标定 YAML，配对后解算并标注到装甲板的距离，只依赖 OpenCV
+add_executable(armor_pnp_offline_test
+    tests/armor_pnp_offline_test.cpp
+    detector/detector.cpp
+    detector/detector_pnp.cpp
+    debug_draw/debug_draw.cpp
+)
+
+target_include_directories(armor_pnp_offline_test
+    PRIVATE
+        "${PROJECT_SOURCE_DIR}/detector"
+        "${PROJECT_SOURCE_DIR}/debug_draw"
+)
+
+target_link_libraries(armor_pnp_offline_test
+    PRIVATE
+        ${OpenCV_LIBS}
+)
+
+target_compile_options(armor_pnp_offline_test PRIVATE -Wall -Wextra -Wpedantic)
+
+set_target_properties(armor_pnp_offline_test
+    PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}"
+)
+
 # 在线跑 detector 的预处理测试：连相机实时取帧 → 预处理 → 双窗口显示（取帧/预处理/显示 各一线程）
 add_executable(preprocess_online_test
     tests/preprocess_online_test.cpp
@@ -218,6 +244,39 @@ target_link_libraries(lightbar_online_test
 target_compile_options(lightbar_online_test PRIVATE -Wall -Wextra -Wpedantic)
 
 set_target_properties(lightbar_online_test
+    PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}"
+        BUILD_RPATH "${MVCAM_LIBRARY_DIR}"
+        INSTALL_RPATH "${MVCAM_LIBRARY_DIR}"
+)
+
+# 在线跑 detector 的 PnP 位姿解算测试：连相机实时取帧 → 预处理+筛选+配对+PnP → 单窗口画装甲框并标注 rvec/tvec（取帧/处理/显示 各一线程）
+add_executable(armor_pnp_online_test
+    tests/armor_pnp_online_test.cpp
+    hik_camera/hik_camera.cpp
+    detector/detector.cpp
+    detector/detector_pnp.cpp
+    debug_draw/debug_draw.cpp
+)
+
+target_include_directories(armor_pnp_online_test
+    PRIVATE
+        "${PROJECT_SOURCE_DIR}/hik_camera"
+        "${PROJECT_SOURCE_DIR}/detector"
+        "${PROJECT_SOURCE_DIR}/debug_draw"
+        "${MVCAM_INCLUDE_DIR}"
+)
+
+target_link_libraries(armor_pnp_online_test
+    PRIVATE
+        ${OpenCV_LIBS}
+        "${MVCAM_LIBRARY}"
+        Threads::Threads
+)
+
+target_compile_options(armor_pnp_online_test PRIVATE -Wall -Wextra -Wpedantic)
+
+set_target_properties(armor_pnp_online_test
     PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}"
         BUILD_RPATH "${MVCAM_LIBRARY_DIR}"
