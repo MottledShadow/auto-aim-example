@@ -68,7 +68,7 @@ struct LightBarFilterParams
     double min_aspect_ratio = 2.0;
     double max_aspect_ratio = 10.0;
     double min_line_angle_deg = 0.0;
-    double max_line_angle_deg = 10.0;
+    double max_line_angle_deg = 15.0;
     double min_fill_ratio = 0.4;
     double max_fill_ratio = 1.0;
 };
@@ -96,7 +96,7 @@ struct Armor
 struct LightBarMatcherParams
 {
     double max_light_length_ratio = 1.2;                 // 两灯条长度比上限（长/短）
-    double max_light_angle_diff_deg = 3.5;              // 两灯条角度差上限（度）
+    double max_light_angle_diff_deg = 10.0;              // 两灯条角度差上限（度）// TODO 上车重点调整
     double max_light_center_y_diff = 10.0;              // 两灯条中心 y 差上限（像素）
     double min_center_distance_ratio = 2.3;              // 中心距/平均灯条长 下限
     double max_center_distance_ratio = 6.0;              // 中心距/平均灯条长 上限

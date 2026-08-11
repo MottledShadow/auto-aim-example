@@ -4,6 +4,7 @@
 #include <cmath>
 #include <sstream>
 #include <string>
+#include <utility>
 
 #include <opencv2/imgproc.hpp>
 
@@ -148,8 +149,12 @@ std::size_t drawArmorMetrics(
         {0, 255, 255}, {255, 128, 0}, {0, 165, 255}, {255, 0, 255},
         {0, 255, 0}, {255, 255, 0}, {200, 0, 255}, {255, 0, 0},
     };
-    std::vector<std::string> legend;        // 左上角每行文字
-    std::vector<cv::Scalar> legend_colors;  // 每行颜色，与对应装甲框同色
+    //在范围绿、超范围红
+    const cv::Scalar green(0, 255, 0);
+    const cv::Scalar red(0, 0, 255);
+
+    //左上角图例：每行是若干分段(文本+颜色)，#编号/大小用框专属色保持与框对应，各指标 ok 绿超范围红
+    std::vector<std::vector<std::pair<std::string, cv::Scalar>>> legend;
 
     std::size_t accepted = 0;
     std::size_t drawn = 0;  // 已画标注的同色对序号
@@ -257,40 +262,54 @@ std::size_t drawArmorMetrics(
             cv::putText(vis, "#" + std::to_string(slot), center,
                         cv::FONT_HERSHEY_SIMPLEX, 0.5, color, 2);
 
-            //攒一行图例：#编号 + ok/NG + 各指标(超范围加!) + 大小 + 遮挡
-            std::string row = "#" + std::to_string(slot) + (pass ? " ok " : " NG ");
-            row += "LR" + fmt(length_ratio, 2) + (length_ok ? " " : "! ");
-            row += "ang" + fmt(angle_diff, 1) + (angle_ok ? " " : "! ");
-            row += "dY" + fmt(center_y_diff, 0) + (y_ok ? " " : "! ");
-            row += "dist" + fmt(center_distance_ratio, 2) + (dist_ok ? " " : "! ");
-            row += (type == ArmorType::Large ? "L" : "S");
+            //攒一行图例的分段：#编号/大小用框色保持对应，各指标 ok 绿、超范围直接标红，遮挡标红
+            std::vector<std::pair<std::string, cv::Scalar>> row;
+            row.emplace_back("#" + std::to_string(slot) + (pass ? " ok " : " NG "), color);
+            row.emplace_back("LR" + fmt(length_ratio, 2) + " ", length_ok ? green : red);
+            row.emplace_back("ang" + fmt(angle_diff, 1) + " ", angle_ok ? green : red);
+            row.emplace_back("dY" + fmt(center_y_diff, 0) + " ", y_ok ? green : red);
+            row.emplace_back("dist" + fmt(center_distance_ratio, 2) + " ", dist_ok ? green : red);
+            row.emplace_back(std::string(type == ArmorType::Large ? "L" : "S"), color);
             if (has_light_between)
             {
-                row += " occ";
+                row.emplace_back(" occ", red);
             }
             legend.push_back(row);
-            legend_colors.push_back(color);
         }
     }
 
-    //左上角铺黑底 + 逐行写图例，行色与对应装甲框一致
+    //左上角铺黑底 + 逐行写图例，每行的各分段横排、颜色各自独立
     if (!legend.empty())
     {
         const int line_h = 16;
         const int pad = 4;
+        //每行宽 = 各分段文本宽之和，取所有行最大
         int max_w = 0;
-        for (const auto& text : legend)
+        for (const auto& row : legend)
         {
-            int baseline = 0;
-            const cv::Size size = cv::getTextSize(text, cv::FONT_HERSHEY_SIMPLEX, 0.4, 1, &baseline);
-            max_w = std::max(max_w, size.width);
+            int row_w = 0;
+            for (const auto& seg : row)
+            {
+                int baseline = 0;
+                const cv::Size size = cv::getTextSize(seg.first, cv::FONT_HERSHEY_SIMPLEX, 0.4, 1, &baseline);
+                row_w += size.width;
+            }
+            max_w = std::max(max_w, row_w);
         }
         const int box_h = pad * 2 + static_cast<int>(legend.size()) * line_h;
         cv::rectangle(vis, cv::Rect(0, 0, max_w + pad * 2, box_h), cv::Scalar(0, 0, 0), cv::FILLED);
+        //逐行逐段写：每段接在上一段右侧，颜色各自独立
         for (std::size_t r = 0; r < legend.size(); ++r)
         {
-            cv::putText(vis, legend[r], cv::Point(pad, pad + static_cast<int>(r) * line_h + 12),
-                        cv::FONT_HERSHEY_SIMPLEX, 0.4, legend_colors[r], 1);
+            int x = pad;
+            const int y = pad + static_cast<int>(r) * line_h + 12;
+            for (const auto& seg : legend[r])
+            {
+                cv::putText(vis, seg.first, cv::Point(x, y), cv::FONT_HERSHEY_SIMPLEX, 0.4, seg.second, 1);
+                int baseline = 0;
+                const cv::Size size = cv::getTextSize(seg.first, cv::FONT_HERSHEY_SIMPLEX, 0.4, 1, &baseline);
+                x += size.width;
+            }
         }
     }
 
