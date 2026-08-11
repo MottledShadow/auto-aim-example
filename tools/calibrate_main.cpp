@@ -1,6 +1,4 @@
 #include <algorithm>
-#include <atomic>
-#include <csignal>
 #include <filesystem>
 #include <iostream>
 #include <stdexcept>
@@ -13,17 +11,11 @@
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 
-#include "hik_capture.hpp"
+#include "hik_camera.hpp"
 
 namespace
 {
 
-std::atomic_bool g_stop{false};
-std::atomic_bool g_capture{false};
-std::atomic_bool g_undo{false};
-std::atomic_bool g_calibrate{false};
-
-constexpr unsigned int kCameraIndex = 0;
 constexpr int kTimeoutMs = 1000;
 constexpr int kRequiredViews = 20;
 constexpr double kSquareSize = 60.0;
@@ -31,34 +23,14 @@ constexpr double kPreviewScale = 0.25;
 constexpr char kOutputPath[] = "config/camera_calibration.yml";
 const cv::Size kPatternSize(11, 8);
 
-void handleSignal(int)
-{
-    g_stop = true;
-}
-
-void handleCapture(int)
-{
-    g_capture = true;
-}
-
-void handleUndo(int)
-{
-    g_undo = true;
-}
-
-void handleCalibrate(int)
-{
-    g_calibrate = true;
-}
-
 void printUsage(const char* exe)
 {
     std::cout
         << "Usage:\n"
         << "  " << exe << "\n"
         << "  " << exe << " --images DIR\n\n"
-        << "Calibrate a camera with a 9x6-inner-corner chessboard using at least 20 views.\n"
-        << "The square size is 25 mm and the result is written to " << kOutputPath << ".\n\n"
+        << "Calibrate a camera with an 11x8-inner-corner chessboard using at least 20 views.\n"
+        << "The square size is 60 mm and the result is written to " << kOutputPath << ".\n\n"
         << "Live keys: SPACE accept view, u undo last, ENTER calibrate, ESC quit\n";
 }
 
@@ -196,25 +168,25 @@ int runImages(const std::string& images_dir)
 
 int runLive()
 {
-    auto_aim::HikCapture camera;
-    const auto& devices = camera.devices();
-    if (devices.empty())
+    auto_aim::HikCamera camera;
+    const int init_result = camera.initialize();
+    if (init_result != MV_OK)
     {
-        std::cerr << "no Hikrobot camera found\n";
-        return 2;
+        std::cerr << "initialize failed: 0x"
+                  << std::hex << static_cast<unsigned int>(init_result) << '\n';
+        return 1;
     }
-
-    camera.open(kCameraIndex, {});
 
     std::vector<std::vector<cv::Point2f>> image_points;
     cv::Size image_size;
 
     std::cout << "live calibration: SPACE accept view, u undo last, ENTER calibrate, ESC quit\n";
 
-    while (!g_stop)
+    while (true)
     {
-        auto_aim::HikFrame frame;
-        if (!camera.grab(frame, kTimeoutMs))
+        auto_aim::HikCameraFrame frame;
+        const int grab_result = camera.capture(frame, kTimeoutMs);
+        if (grab_result != MV_OK)
         {
             std::cerr << "warning: frame timeout/error\n";
             continue;
@@ -249,7 +221,7 @@ int runLive()
         {
             break;
         }
-        if (key == 13 || key == 10 || g_calibrate.exchange(false))
+        if (key == 13 || key == 10)
         {
             if (image_points.size() < kRequiredViews)
             {
@@ -258,7 +230,7 @@ int runLive()
             }
             return calibrateAndSave(image_points, image_size);
         }
-        if (key == ' ' || g_capture.exchange(false))
+        if (key == ' ')
         {
             const cv::Mat gray = toGray(frame.image);
             std::vector<cv::Point2f> refined;
@@ -273,13 +245,15 @@ int runLive()
                 std::cout << "no chessboard detected, view not accepted\n";
             }
         }
-        else if ((key == 'u' || key == 'U' || g_undo.exchange(false)) && !image_points.empty())
+        else if ((key == 'u' || key == 'U') && !image_points.empty())
         {
             image_points.pop_back();
             std::cout << "removed last view, now " << image_points.size() << '\n';
         }
     }
 
+    cv::destroyAllWindows();
+    camera.shutdown();
     std::cout << "aborted, no file written\n";
     return 0;
 }
@@ -288,12 +262,6 @@ int runLive()
 
 int main(int argc, char** argv)
 {
-    std::signal(SIGINT, handleSignal);
-    std::signal(SIGTERM, handleSignal);
-    std::signal(SIGUSR1, handleCapture);
-    std::signal(SIGUSR2, handleUndo);
-    std::signal(SIGQUIT, handleCalibrate);
-
     try
     {
         if (argc == 1)

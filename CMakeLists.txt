@@ -85,6 +85,33 @@ set_target_properties(snapshot
         INSTALL_RPATH "${MVCAM_LIBRARY_DIR}"
 )
 
+add_executable(calibrate_camera
+    tools/calibrate_main.cpp
+    hik_camera/hik_camera.cpp
+)
+
+target_include_directories(calibrate_camera
+    PRIVATE
+        "${PROJECT_SOURCE_DIR}/hik_camera"
+        "${MVCAM_INCLUDE_DIR}"
+)
+
+target_link_libraries(calibrate_camera
+    PRIVATE
+        ${OpenCV_LIBS}
+        "${MVCAM_LIBRARY}"
+        Threads::Threads
+)
+
+target_compile_options(calibrate_camera PRIVATE -Wall -Wextra -Wpedantic)
+
+set_target_properties(calibrate_camera
+    PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}"
+        BUILD_RPATH "${MVCAM_LIBRARY_DIR}"
+        INSTALL_RPATH "${MVCAM_LIBRARY_DIR}"
+)
+
 # 离线分阶段调试测试：读磁盘图片，命令行 <stage> 选阶段(preprocess/lightbar/armor/pnp)，只依赖 OpenCV，不链接相机 SDK
 add_executable(pipeline_offline_test
     tests/pipeline_offline_test.cpp
