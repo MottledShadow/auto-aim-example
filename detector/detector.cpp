@@ -12,47 +12,15 @@ PreprocessResult preprocess(const cv::Mat& frame, const PreprocessParams& params
 {
     PreprocessResult result;
 
-    //记录二值图是用哪种方法/目标色产生的，供 filterLightBars 判断颜色是否已知
-    result.method = params.method;
-    result.target_color = params.target_color;
-
-    //二值化：按标志位选灰度阈值法或红蓝通道相减法
-    if (params.method == BinaryMethod::Gray)
-    {
-        //灰度阈值法：转灰度后直接阈值化
-        cv::Mat gray;
-        cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
-        cv::threshold(
-            gray,
-            result.binary,
-            params.binary_threshold,
-            255,
-            cv::THRESH_BINARY);
-    }
-    else
-    {
-        //红蓝通道相减法：拆 BGR，按目标颜色只算一路（Red 用 R-B，Blue 用 B-R），负值截到 0 后阈值化
-        std::vector<cv::Mat> channels;
-        cv::split(frame, channels);
-        cv::Mat diff;
-        int channel_threshold;
-        if (params.target_color == LightColor::Red)
-        {
-            cv::subtract(channels[2], channels[0], diff);
-            channel_threshold = params.channel_sub_threshold_red;
-        }
-        else
-        {
-            cv::subtract(channels[0], channels[2], diff);
-            channel_threshold = params.channel_sub_threshold_blue;
-        }
-        cv::threshold(
-            diff,
-            result.binary,
-            channel_threshold,
-            255,
-            cv::THRESH_BINARY);
-    }
+    //灰度二值化：转灰度后直接阈值化
+    cv::Mat gray;
+    cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
+    cv::threshold(
+        gray,
+        result.binary,
+        params.binary_threshold,
+        255,
+        cv::THRESH_BINARY);
 
     //寻找轮廓
     std::vector<std::vector<cv::Point>> contours;
@@ -70,7 +38,7 @@ PreprocessResult preprocess(const cv::Mat& frame, const PreprocessParams& params
         if (contour.size() >= 2)
         {
             cv::Vec4f center_line;
-            cv::fitLine(contour, center_line, cv::DIST_L2, 0, 0.01, 0.01);  //后面需要考虑是否要往后面过程移动
+            cv::fitLine(contour, center_line, cv::DIST_L2, 0, 0.01, 0.01);
             result.candidates.push_back(ContourCandidate{
                 contour,
                 cv::minAreaRect(contour),
@@ -138,27 +106,18 @@ std::vector<LightBar> filterLightBars(
             continue;
         }
 
-        //判定灯条颜色：按二值图的产生方法分流
+        //判定灯条颜色：灰度二值图不含颜色，取轮廓内 BGR 均值判红蓝
         LightColor color = LightColor::Unknown;
-        if (preprocess.method == BinaryMethod::ChannelSubtract)
+        cv::Mat mask = cv::Mat::zeros(frame.size(), CV_8UC1);
+        cv::drawContours(mask, std::vector<std::vector<cv::Point>>{geom.contour}, 0, cv::Scalar(255), cv::FILLED);
+        const cv::Scalar mean = cv::mean(frame, mask);
+        if (mean[2] > mean[0])
         {
-            //通道相减只保留了目标色，颜色已知，无需再算均值
-            color = preprocess.target_color;
+            color = LightColor::Red;
         }
-        else
+        else if (mean[0] > mean[2])
         {
-            //灰度法二值图不含颜色，取轮廓内 BGR 均值判红蓝
-            cv::Mat mask = cv::Mat::zeros(frame.size(), CV_8UC1);
-            cv::drawContours(mask, std::vector<std::vector<cv::Point>>{geom.contour}, 0, cv::Scalar(255), cv::FILLED);
-            const cv::Scalar mean = cv::mean(frame, mask);
-            if (mean[2] > mean[0])
-            {
-                color = LightColor::Red;
-            }
-            else if (mean[0] > mean[2])
-            {
-                color = LightColor::Blue;
-            }
+            color = LightColor::Blue;
         }
 
 
@@ -221,7 +180,6 @@ std::vector<Armor> matchArmors(
             const LightBar& right = light_bars[right_index];
 
             //同色判据：两灯条颜色相同且不是 Unknown，否则跳过
-            // TODO 这里当预处理方法为通道相减法的时候不需要
             if (left.color == LightColor::Unknown || left.color != right.color)
             {
                 continue;

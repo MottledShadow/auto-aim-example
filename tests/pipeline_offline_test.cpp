@@ -27,15 +27,11 @@ int main(int argc, char** argv)
     const std::string output_root = (argc > 3) ? argv[3] : "test_output";
     const std::string calib_path = (argc > 4) ? argv[4] : "config/camera_calibration.yml";
 
-    //各阶段参数都走头文件默认值；要测灰度或改颜色直接改 detector.hpp
+    //各阶段参数都走头文件默认值；要改阈值直接改 detector.hpp
     auto_aim::PreprocessParams pre_params;
     auto_aim::LightBarFilterParams filter_params;
     auto_aim::LightBarMatcherParams matcher_params;
     auto_aim::PnpSolverParams pnp_params;
-
-    //preprocess 阶段额外用灰度法做对照（其余阶段只用默认的通道相减）
-    auto_aim::PreprocessParams gray_params;
-    gray_params.method = auto_aim::BinaryMethod::Gray;
 
     //只有 pnp 阶段需要相机标定，失败只告警不退出（solvePnp 会返回空位姿）
     auto_aim::CameraCalibration calibration;
@@ -48,35 +44,13 @@ int main(int argc, char** argv)
         }
     }
 
-    //输出文件夹名标明二值化方法 + 参数，比时间戳直观（lightbar/armor/pnp 共用）
-    std::string method_tag;
-    if (pre_params.method == auto_aim::BinaryMethod::ChannelSubtract)
-    {
-        const bool is_red = (pre_params.target_color == auto_aim::LightColor::Red);
-        const std::string color_tag = is_red ? "red" : "blue";
-        const int channel_threshold = is_red
-            ? pre_params.channel_sub_threshold_red
-            : pre_params.channel_sub_threshold_blue;
-        method_tag = "ch" + std::to_string(channel_threshold) + "_" + color_tag;
-    }
-    else
-    {
-        method_tag = "gray" + std::to_string(pre_params.binary_threshold);
-    }
+    //输出文件夹名标明灰度阈值，比时间戳直观
+    const std::string method_tag = "gray" + std::to_string(pre_params.binary_threshold);
 
-    //preprocess 阶段同跑灰度+通道两法，文件夹名把两法关键参数都带上；其余阶段用单法 tag
     std::string output_dir;
     if (stage == "preprocess")
     {
-        const bool channel_is_red = (pre_params.target_color == auto_aim::LightColor::Red);
-        const std::string color_tag = channel_is_red ? "red" : "blue";
-        const int channel_threshold = channel_is_red
-            ? pre_params.channel_sub_threshold_red
-            : pre_params.channel_sub_threshold_blue;
-        output_dir = output_root + "/test_gray"
-            + std::to_string(gray_params.binary_threshold)
-            + "_ch" + std::to_string(channel_threshold)
-            + "_" + color_tag;
+        output_dir = output_root + "/test_" + method_tag;
     }
     else
     {
@@ -112,28 +86,21 @@ int main(int argc, char** argv)
         const size_t dot = file.find_last_of('.');
         const std::string stem = file.substr(slash + 1, dot - slash - 1);
 
-        //preprocess：灰度法和通道相减法各跑一次，二值图 + 候选可视化各存一张
+        //preprocess：灰度二值化跑一次，二值图 + 候选可视化各存一张
         if (stage == "preprocess")
         {
-            const auto_aim::PreprocessResult gray_result = auto_aim::preprocess(frame, gray_params);
-            const auto_aim::PreprocessResult channel_result = auto_aim::preprocess(frame, pre_params);
+            const auto_aim::PreprocessResult gray_result = auto_aim::preprocess(frame, pre_params);
 
-            //两种方法的二值图各存一张
-            cv::imwrite(output_dir + "/" + stem + "_binary_gray.png", gray_result.binary);
-            cv::imwrite(output_dir + "/" + stem + "_binary_channel.png", channel_result.binary);
+            //灰度二值图存一张
+            cv::imwrite(output_dir + "/" + stem + "_binary.png", gray_result.binary);
 
             //在原图上画出候选轮廓、最小外接矩形、中心线和面积数字
             cv::Mat vis = frame.clone();
-            auto_aim::drawCandidates(vis, channel_result.candidates);
-            cv::imwrite(output_dir + "/" + stem + "_vis_channel.png", vis);
-
-            vis = frame.clone();
             auto_aim::drawCandidates(vis, gray_result.candidates);
-            cv::imwrite(output_dir + "/" + stem + "_vis_binary.png", vis);
+            cv::imwrite(output_dir + "/" + stem + "_vis.png", vis);
 
             std::cout << stem
-                      << " gray_candidates=" << gray_result.candidates.size()
-                      << " channel_candidates=" << channel_result.candidates.size() << '\n';
+                      << " candidates=" << gray_result.candidates.size() << '\n';
             continue;
         }
 

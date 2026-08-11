@@ -16,19 +16,9 @@ enum class LightColor
     Blue,
 };
 
-enum class BinaryMethod
-{
-    Gray,            // 灰度阈值二值化
-    ChannelSubtract, // 红蓝通道相减二值化
-};
-
 struct PreprocessParams
 {
-    BinaryMethod method = BinaryMethod::ChannelSubtract; // 默认走通道相减
-    LightColor target_color = LightColor::Blue;           // 通道相减时算哪一路（Red→R-B，Blue→B-R）
-    int binary_threshold = 125;              // 灰度法阈值
-    int channel_sub_threshold_red = 55;      // 通道相减法·红（R-B）阈值
-    int channel_sub_threshold_blue = 75;     // 通道相减法·蓝（B-R）阈值，蓝灯条要设更高
+    int binary_threshold = 125;  // 灰度二值化阈值
 };
 
 struct ContourCandidate
@@ -43,8 +33,6 @@ struct PreprocessResult
 {
     cv::Mat binary;
     std::vector<ContourCandidate> candidates;
-    BinaryMethod method = BinaryMethod::ChannelSubtract;  // 该二值图用的方法
-    LightColor target_color = LightColor::Blue;            // 通道相减法时的目标色
 };
 
 PreprocessResult preprocess(const cv::Mat& frame, const PreprocessParams& params = {});

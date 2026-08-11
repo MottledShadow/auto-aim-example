@@ -24,10 +24,7 @@ namespace
 struct FrameResult
 {
     cv::Mat frame;
-    //preprocess 用：灰度法/通道相减法两张二值图
-    auto_aim::PreprocessResult processed_gray;
-    auto_aim::PreprocessResult processed_channel;
-    //lightbar 用：单次预处理结果（含候选轮廓）
+    //preprocess / lightbar 共用：单次预处理结果（含二值图和候选轮廓）
     auto_aim::PreprocessResult processed;
     //armor 用：筛选通过的灯条
     std::vector<auto_aim::LightBar> bars;
@@ -106,11 +103,8 @@ int run(const std::string& stage)
 
             if (stage == "preprocess")
             {
-                //灰度法/通道相减法各跑一次，供显示线程左右并排
-                auto_aim::PreprocessParams gray_params;
-                gray_params.method = auto_aim::BinaryMethod::Gray;
-                output.processed_gray = auto_aim::preprocess(frame, gray_params);
-                output.processed_channel = auto_aim::preprocess(frame, pre_params);
+                //灰度二值化跑一次，供显示线程展示二值图
+                output.processed = auto_aim::preprocess(frame, pre_params);
             }
             else if (stage == "lightbar")
             {
@@ -149,8 +143,8 @@ int run(const std::string& stage)
     std::string window_name;
     if (stage == "preprocess")
     {
-        window_name = "binarize compare";
-        std::cout << "一个窗口：左灰度阈值二值化，右红蓝通道相减二值化；q/ESC 退出\n";
+        window_name = "binarize";
+        std::cout << "一个窗口：灰度阈值二值化；q/ESC 退出\n";
     }
     else if (stage == "lightbar")
     {
@@ -185,20 +179,10 @@ int run(const std::string& stage)
 
         if (stage == "preprocess")
         {
-            //方法一/二的二值图各转 BGR 方便并排和加标注
-            cv::Mat panel_gray;
-            cv::cvtColor(result_frame.processed_gray.binary, panel_gray, cv::COLOR_GRAY2BGR);
-            cv::Mat panel_channel;
-            cv::cvtColor(result_frame.processed_channel.binary, panel_channel, cv::COLOR_GRAY2BGR);
-
-            //左右各打一个方法名标注
-            cv::putText(panel_gray, "gray thresh", cv::Point(10, 30),
+            //灰度二值图转 BGR 方便加标注
+            cv::cvtColor(result_frame.processed.binary, vis, cv::COLOR_GRAY2BGR);
+            cv::putText(vis, "gray thresh", cv::Point(10, 30),
                         cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(0, 255, 0), 2);
-            cv::putText(panel_channel, "R-B (red)", cv::Point(10, 30),
-                        cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(0, 255, 0), 2);
-
-            //左右并排成一张
-            cv::hconcat(panel_gray, panel_channel, vis);
         }
         else if (stage == "lightbar")
         {
