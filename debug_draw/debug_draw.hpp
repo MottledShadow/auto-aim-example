@@ -19,6 +19,12 @@ std::size_t drawLightBarMetrics(
     const std::vector<ContourCandidate>& candidates,
     const LightBarFilterParams& params);
 
+//对所有同色灯条对按 matchArmors 的公式重算配对指标并画装甲框(整体接受绿/被拒红)，逐项参数单独着色；返回被接受的装甲数
+std::size_t drawArmorMetrics(
+    cv::Mat& vis,
+    const std::vector<LightBar>& light_bars,
+    const LightBarMatcherParams& params);
+
 //只缩不放：scale=min(w/cols,h/rows)，scale<1 时按 INTER_AREA 等比缩小
 void fitToScreen(cv::Mat& image, int screen_w = 1920, int screen_h = 1080);
 

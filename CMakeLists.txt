@@ -135,6 +135,31 @@ set_target_properties(lightbar_offline_test
         RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}"
 )
 
+# 离线跑 detector 的灯条配对测试：只读磁盘图片，把每对同色灯条的配对指标标到图上并画装甲框，只依赖 OpenCV
+add_executable(armor_offline_test
+    tests/armor_offline_test.cpp
+    detector/detector.cpp
+    debug_draw/debug_draw.cpp
+)
+
+target_include_directories(armor_offline_test
+    PRIVATE
+        "${PROJECT_SOURCE_DIR}/detector"
+        "${PROJECT_SOURCE_DIR}/debug_draw"
+)
+
+target_link_libraries(armor_offline_test
+    PRIVATE
+        ${OpenCV_LIBS}
+)
+
+target_compile_options(armor_offline_test PRIVATE -Wall -Wextra -Wpedantic)
+
+set_target_properties(armor_offline_test
+    PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}"
+)
+
 # 在线跑 detector 的预处理测试：连相机实时取帧 → 预处理 → 双窗口显示（取帧/预处理/显示 各一线程）
 add_executable(preprocess_online_test
     tests/preprocess_online_test.cpp
