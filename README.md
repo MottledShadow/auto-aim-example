@@ -78,7 +78,7 @@ HikCapture
 
   - CMakeLists.txt：构建主程序 hik_capture 和标定程序 calibrate_camera。
   - jetson-toolchain.cmake：面向 Jetson ARM64 的交叉编译配置。
-  - scripts/cross-deploy-run.sh：交叉构建、上传到 Jetson 并运行。
+  - scripts/cross-run.sh <stage> <offline|online>：交叉构建分阶段调试测试、上传到 Jetson 并运行（stage 取 preprocess/lightbar/armor/pnp）。
 
 ## 调参方式
 

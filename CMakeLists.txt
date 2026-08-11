@@ -85,213 +85,42 @@ set_target_properties(snapshot
         INSTALL_RPATH "${MVCAM_LIBRARY_DIR}"
 )
 
-# 离线跑 detector 的预处理测试：只读磁盘图片，只依赖 OpenCV，不链接相机 SDK
-add_executable(preprocess_offline_test
-    tests/preprocess_offline_test.cpp
-    detector/detector.cpp
-    debug_draw/debug_draw.cpp
-)
-
-target_include_directories(preprocess_offline_test
-    PRIVATE
-        "${PROJECT_SOURCE_DIR}/detector"
-        "${PROJECT_SOURCE_DIR}/debug_draw"
-)
-
-target_link_libraries(preprocess_offline_test
-    PRIVATE
-        ${OpenCV_LIBS}
-)
-
-target_compile_options(preprocess_offline_test PRIVATE -Wall -Wextra -Wpedantic)
-
-set_target_properties(preprocess_offline_test
-    PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}"
-)
-
-# 离线跑 detector 的灯条筛选测试：只读磁盘图片，把各候选的四项筛选指标标到图上，只依赖 OpenCV
-add_executable(lightbar_offline_test
-    tests/lightbar_offline_test.cpp
-    detector/detector.cpp
-    debug_draw/debug_draw.cpp
-)
-
-target_include_directories(lightbar_offline_test
-    PRIVATE
-        "${PROJECT_SOURCE_DIR}/detector"
-        "${PROJECT_SOURCE_DIR}/debug_draw"
-)
-
-target_link_libraries(lightbar_offline_test
-    PRIVATE
-        ${OpenCV_LIBS}
-)
-
-target_compile_options(lightbar_offline_test PRIVATE -Wall -Wextra -Wpedantic)
-
-set_target_properties(lightbar_offline_test
-    PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}"
-)
-
-# 离线跑 detector 的灯条配对测试：只读磁盘图片，把每对同色灯条的配对指标标到图上并画装甲框，只依赖 OpenCV
-add_executable(armor_offline_test
-    tests/armor_offline_test.cpp
-    detector/detector.cpp
-    debug_draw/debug_draw.cpp
-)
-
-target_include_directories(armor_offline_test
-    PRIVATE
-        "${PROJECT_SOURCE_DIR}/detector"
-        "${PROJECT_SOURCE_DIR}/debug_draw"
-)
-
-target_link_libraries(armor_offline_test
-    PRIVATE
-        ${OpenCV_LIBS}
-)
-
-target_compile_options(armor_offline_test PRIVATE -Wall -Wextra -Wpedantic)
-
-set_target_properties(armor_offline_test
-    PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}"
-)
-
-# 离线跑 detector 的 PnP 位姿解算测试：读磁盘图片 + 标定 YAML，配对后解算并标注到装甲板的距离，只依赖 OpenCV
-add_executable(armor_pnp_offline_test
-    tests/armor_pnp_offline_test.cpp
+# 离线分阶段调试测试：读磁盘图片，命令行 <stage> 选阶段(preprocess/lightbar/armor/pnp)，只依赖 OpenCV，不链接相机 SDK
+add_executable(pipeline_offline_test
+    tests/pipeline_offline_test.cpp
     detector/detector.cpp
     detector/detector_pnp.cpp
     debug_draw/debug_draw.cpp
 )
 
-target_include_directories(armor_pnp_offline_test
+target_include_directories(pipeline_offline_test
     PRIVATE
         "${PROJECT_SOURCE_DIR}/detector"
         "${PROJECT_SOURCE_DIR}/debug_draw"
 )
 
-target_link_libraries(armor_pnp_offline_test
+target_link_libraries(pipeline_offline_test
     PRIVATE
         ${OpenCV_LIBS}
 )
 
-target_compile_options(armor_pnp_offline_test PRIVATE -Wall -Wextra -Wpedantic)
+target_compile_options(pipeline_offline_test PRIVATE -Wall -Wextra -Wpedantic)
 
-set_target_properties(armor_pnp_offline_test
+set_target_properties(pipeline_offline_test
     PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}"
 )
 
-# 在线跑 detector 的预处理测试：连相机实时取帧 → 预处理 → 双窗口显示（取帧/预处理/显示 各一线程）
-add_executable(preprocess_online_test
-    tests/preprocess_online_test.cpp
-    hik_camera/hik_camera.cpp
-    detector/detector.cpp
-    debug_draw/debug_draw.cpp
-)
-
-target_include_directories(preprocess_online_test
-    PRIVATE
-        "${PROJECT_SOURCE_DIR}/hik_camera"
-        "${PROJECT_SOURCE_DIR}/detector"
-        "${PROJECT_SOURCE_DIR}/debug_draw"
-        "${MVCAM_INCLUDE_DIR}"
-)
-
-target_link_libraries(preprocess_online_test
-    PRIVATE
-        ${OpenCV_LIBS}
-        "${MVCAM_LIBRARY}"
-        Threads::Threads
-)
-
-target_compile_options(preprocess_online_test PRIVATE -Wall -Wextra -Wpedantic)
-
-set_target_properties(preprocess_online_test
-    PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}"
-        BUILD_RPATH "${MVCAM_LIBRARY_DIR}"
-        INSTALL_RPATH "${MVCAM_LIBRARY_DIR}"
-)
-
-# 在线跑 detector 的灯条筛选测试：连相机实时取帧 → 预处理+筛选 → 单窗口逐候选标注四项指标（取帧/处理/显示 各一线程）
-add_executable(lightbar_online_test
-    tests/lightbar_online_test.cpp
-    hik_camera/hik_camera.cpp
-    detector/detector.cpp
-    debug_draw/debug_draw.cpp
-)
-
-target_include_directories(lightbar_online_test
-    PRIVATE
-        "${PROJECT_SOURCE_DIR}/hik_camera"
-        "${PROJECT_SOURCE_DIR}/detector"
-        "${PROJECT_SOURCE_DIR}/debug_draw"
-        "${MVCAM_INCLUDE_DIR}"
-)
-
-target_link_libraries(lightbar_online_test
-    PRIVATE
-        ${OpenCV_LIBS}
-        "${MVCAM_LIBRARY}"
-        Threads::Threads
-)
-
-target_compile_options(lightbar_online_test PRIVATE -Wall -Wextra -Wpedantic)
-
-set_target_properties(lightbar_online_test
-    PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}"
-        BUILD_RPATH "${MVCAM_LIBRARY_DIR}"
-        INSTALL_RPATH "${MVCAM_LIBRARY_DIR}"
-)
-
-# 在线跑 detector 的灯条配对测试：连相机实时取帧 → 预处理+筛选+配对 → 单窗口画装甲框并逐项标注配对指标（取帧/处理/显示 各一线程）
-add_executable(armor_online_test
-    tests/armor_online_test.cpp
-    hik_camera/hik_camera.cpp
-    detector/detector.cpp
-    debug_draw/debug_draw.cpp
-)
-
-target_include_directories(armor_online_test
-    PRIVATE
-        "${PROJECT_SOURCE_DIR}/hik_camera"
-        "${PROJECT_SOURCE_DIR}/detector"
-        "${PROJECT_SOURCE_DIR}/debug_draw"
-        "${MVCAM_INCLUDE_DIR}"
-)
-
-target_link_libraries(armor_online_test
-    PRIVATE
-        ${OpenCV_LIBS}
-        "${MVCAM_LIBRARY}"
-        Threads::Threads
-)
-
-target_compile_options(armor_online_test PRIVATE -Wall -Wextra -Wpedantic)
-
-set_target_properties(armor_online_test
-    PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}"
-        BUILD_RPATH "${MVCAM_LIBRARY_DIR}"
-        INSTALL_RPATH "${MVCAM_LIBRARY_DIR}"
-)
-
-# 在线跑 detector 的 PnP 位姿解算测试：连相机实时取帧 → 预处理+筛选+配对+PnP → 单窗口画装甲框并标注 rvec/tvec（取帧/处理/显示 各一线程）
-add_executable(armor_pnp_online_test
-    tests/armor_pnp_online_test.cpp
+# 在线分阶段调试测试：连相机实时取帧，命令行 <stage> 选阶段 → 单窗口显示（取帧/处理/显示 各一线程）
+add_executable(pipeline_online_test
+    tests/pipeline_online_test.cpp
     hik_camera/hik_camera.cpp
     detector/detector.cpp
     detector/detector_pnp.cpp
     debug_draw/debug_draw.cpp
 )
 
-target_include_directories(armor_pnp_online_test
+target_include_directories(pipeline_online_test
     PRIVATE
         "${PROJECT_SOURCE_DIR}/hik_camera"
         "${PROJECT_SOURCE_DIR}/detector"
@@ -299,16 +128,16 @@ target_include_directories(armor_pnp_online_test
         "${MVCAM_INCLUDE_DIR}"
 )
 
-target_link_libraries(armor_pnp_online_test
+target_link_libraries(pipeline_online_test
     PRIVATE
         ${OpenCV_LIBS}
         "${MVCAM_LIBRARY}"
         Threads::Threads
 )
 
-target_compile_options(armor_pnp_online_test PRIVATE -Wall -Wextra -Wpedantic)
+target_compile_options(pipeline_online_test PRIVATE -Wall -Wextra -Wpedantic)
 
-set_target_properties(armor_pnp_online_test
+set_target_properties(pipeline_online_test
     PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}"
         BUILD_RPATH "${MVCAM_LIBRARY_DIR}"
