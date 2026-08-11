@@ -16,10 +16,47 @@ enum class LightColor
     Blue,
 };
 
+// ========== 调参结构体（置顶，方便调参）==========
+
 struct PreprocessParams
 {
     int binary_threshold = 125;  // 灰度二值化阈值
 };
+
+struct LightBarFilterParams
+{
+    double min_area = 20.0;
+    double max_area = 7000.0;
+    double min_aspect_ratio = 2.0;
+    double max_aspect_ratio = 10.0;
+    double min_line_angle_deg = 0.0;
+    double max_line_angle_deg = 15.0;
+    double min_fill_ratio = 0.4;
+    double max_fill_ratio = 1.0;
+    LightColor target_color = LightColor::Blue;  // 目标灯条颜色，非此色的灯条舍弃
+};
+
+struct LightBarMatcherParams
+{
+    double max_light_length_ratio = 1.2;                 // 两灯条长度比上限（长/短）
+    double max_light_angle_diff_deg = 10.0;              // 两灯条角度差上限（度）// TODO 上车重点调整
+    double max_light_center_y_diff = 10.0;              // 两灯条中心 y 差上限（像素）
+    double min_center_distance_ratio = 2.3;              // 中心距/平均灯条长 下限
+    double max_center_distance_ratio = 6.0;              // 中心距/平均灯条长 上限
+    double large_armor_min_center_distance_ratio = 4.0;  // 中心距比 ≥ 此值判大装甲
+};
+
+// PnP 位姿解算参数：装甲板物理尺寸(mm) + solvePnP 方法（尺寸暂沿用占位值）
+struct PnpSolverParams
+{
+    double small_armor_width = 130.0;
+    double small_armor_height = 60.0;
+    double large_armor_width = 230.0;
+    double large_armor_height = 55.0;
+    int solve_pnp_method = cv::SOLVEPNP_IPPE;
+};
+
+// ========== 数据结构体 ==========
 
 struct ContourCandidate
 {
@@ -35,8 +72,6 @@ struct PreprocessResult
     std::vector<ContourCandidate> candidates;
 };
 
-PreprocessResult preprocess(const cv::Mat& frame, const PreprocessParams& params = {});
-
 struct LightBar
 {
     LightColor color = LightColor::Unknown;
@@ -44,27 +79,8 @@ struct LightBar
     cv::Point2f bottom;
     cv::Point2f center;
     float length = 0.0F;
-    float width = 0.0F;
     float angle = 0.0F;
-    float area = 0.0F;
 };
-
-struct LightBarFilterParams
-{
-    double min_area = 20.0;
-    double max_area = 7000.0;
-    double min_aspect_ratio = 2.0;
-    double max_aspect_ratio = 10.0;
-    double min_line_angle_deg = 0.0;
-    double max_line_angle_deg = 15.0;
-    double min_fill_ratio = 0.4;
-    double max_fill_ratio = 1.0;
-};
-
-std::vector<LightBar> filterLightBars(
-    const cv::Mat& frame,
-    const PreprocessResult& preprocess,
-    const LightBarFilterParams& params = {});
 
 enum class ArmorType
 {
@@ -79,30 +95,6 @@ struct Armor
     LightBar right_light;
     cv::Point2f center;
     ArmorType type = ArmorType::Unknown;
-};
-
-struct LightBarMatcherParams
-{
-    double max_light_length_ratio = 1.2;                 // 两灯条长度比上限（长/短）
-    double max_light_angle_diff_deg = 10.0;              // 两灯条角度差上限（度）// TODO 上车重点调整
-    double max_light_center_y_diff = 10.0;              // 两灯条中心 y 差上限（像素）
-    double min_center_distance_ratio = 2.3;              // 中心距/平均灯条长 下限
-    double max_center_distance_ratio = 6.0;              // 中心距/平均灯条长 上限
-    double large_armor_min_center_distance_ratio = 4.0;  // 中心距比 ≥ 此值判大装甲
-};
-
-std::vector<Armor> matchArmors(
-    const std::vector<LightBar>& light_bars,
-    const LightBarMatcherParams& params = {});
-
-// PnP 位姿解算参数：装甲板物理尺寸(mm) + solvePnP 方法（尺寸暂沿用占位值）
-struct PnpSolverParams
-{
-    double small_armor_width = 130.0;
-    double small_armor_height = 60.0;
-    double large_armor_width = 230.0;
-    double large_armor_height = 55.0;
-    int solve_pnp_method = cv::SOLVEPNP_IPPE;
 };
 
 // 相机标定：内参矩阵、畸变系数；error 为空表示加载成功
@@ -120,6 +112,19 @@ struct ArmorPose
     cv::Mat rvec;
     cv::Mat tvec;
 };
+
+// ========== 函数接口 ==========
+
+PreprocessResult preprocess(const cv::Mat& frame, const PreprocessParams& params = {});
+
+std::vector<LightBar> filterLightBars(
+    const cv::Mat& frame,
+    const PreprocessResult& preprocess,
+    const LightBarFilterParams& params = {});
+
+std::vector<Armor> matchArmors(
+    const std::vector<LightBar>& light_bars,
+    const LightBarMatcherParams& params = {});
 
 CameraCalibration loadCalibration(const std::string& path = "config/camera_calibration.yml");
 

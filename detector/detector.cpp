@@ -120,6 +120,11 @@ std::vector<LightBar> filterLightBars(
             color = LightColor::Blue;
         }
 
+        //颜色不是目标灯条颜色的直接舍弃
+        if (color != params.target_color)
+        {
+            continue;
+        }
 
         //由外接矩形顶点求灯条上下两端点：取较短边方向的两条边中点，按 y 排序令 top 在上
         cv::Point2f vertices[4];
@@ -150,9 +155,7 @@ std::vector<LightBar> filterLightBars(
             bottom,
             rect.center,
             static_cast<float>(long_side),
-            static_cast<float>(short_side),
-            static_cast<float>(line_angle_deg),
-            static_cast<float>(area)});
+            static_cast<float>(line_angle_deg)});
     }
 
     return result;
@@ -178,12 +181,6 @@ std::vector<Armor> matchArmors(
             }
             const LightBar& left = light_bars[left_index];
             const LightBar& right = light_bars[right_index];
-
-            //同色判据：两灯条颜色相同且不是 Unknown，否则跳过
-            if (left.color == LightColor::Unknown || left.color != right.color)
-            {
-                continue;
-            }
 
             //长度比：较长/较短，短灯条退化（≈0）跳过
             const double min_length = std::min(left.length, right.length);
