@@ -4,8 +4,8 @@
 #include <vector>
 
 #include <opencv2/imgcodecs.hpp>
-#include <opencv2/imgproc.hpp>
 
+#include "debug_draw.hpp"
 #include "detector.hpp"
 
 int main(int argc, char** argv)
@@ -69,77 +69,11 @@ int main(int argc, char** argv)
 
         //在原图上画出候选轮廓、最小外接矩形、中心线和面积数字
         cv::Mat vis = frame.clone();
-        for (const auto& candidate : channel_result.candidates)
-        {
-            //候选轮廓（绿色）
-            const std::vector<std::vector<cv::Point>> one_contour{candidate.contour};
-            cv::drawContours(vis, one_contour, -1, cv::Scalar(0, 255, 0), 1);
-
-            //最小外接矩形（黄色）
-            cv::Point2f corners[4];
-            candidate.rect.points(corners);
-            for (int i = 0; i < 4; ++i)
-            {
-                cv::line(vis, corners[i], corners[(i + 1) % 4], cv::Scalar(0, 255, 255), 1);
-            }
-
-            //fitLine 中心线（红色），沿方向向量往两边延伸
-            const float vx = candidate.center_line[0];
-            const float vy = candidate.center_line[1];
-            const float x0 = candidate.center_line[2];
-            const float y0 = candidate.center_line[3];
-            const float length = 30.0F;
-            const cv::Point p1(cvRound(x0 - vx * length), cvRound(y0 - vy * length));
-            const cv::Point p2(cvRound(x0 + vx * length), cvRound(y0 + vy * length));
-            cv::line(vis, p1, p2, cv::Scalar(0, 0, 255), 1);
-
-            //面积数字
-            cv::putText(
-                vis,
-                "A=" + std::to_string(static_cast<int>(candidate.area)),
-                candidate.rect.center,
-                cv::FONT_HERSHEY_SIMPLEX,
-                0.4,
-                cv::Scalar(0, 0, 255),
-                1);
-        }
+        auto_aim::drawCandidates(vis, channel_result.candidates);
         cv::imwrite(output_dir + "/" + stem + "_vis_channel.png", vis);
 
         vis = frame.clone();
-        for (const auto& candidate : gray_result.candidates)
-        {
-            //候选轮廓（绿色）
-            const std::vector<std::vector<cv::Point>> one_contour{candidate.contour};
-            cv::drawContours(vis, one_contour, -1, cv::Scalar(0, 255, 0), 1);
-
-            //最小外接矩形（黄色）
-            cv::Point2f corners[4];
-            candidate.rect.points(corners);
-            for (int i = 0; i < 4; ++i)
-            {
-                cv::line(vis, corners[i], corners[(i + 1) % 4], cv::Scalar(0, 255, 255), 1);
-            }
-
-            //fitLine 中心线（红色），沿方向向量往两边延伸
-            const float vx = candidate.center_line[0];
-            const float vy = candidate.center_line[1];
-            const float x0 = candidate.center_line[2];
-            const float y0 = candidate.center_line[3];
-            const float length = 30.0F;
-            const cv::Point p1(cvRound(x0 - vx * length), cvRound(y0 - vy * length));
-            const cv::Point p2(cvRound(x0 + vx * length), cvRound(y0 + vy * length));
-            cv::line(vis, p1, p2, cv::Scalar(0, 0, 255), 1);
-
-            //面积数字
-            cv::putText(
-                vis,
-                "A=" + std::to_string(static_cast<int>(candidate.area)),
-                candidate.rect.center,
-                cv::FONT_HERSHEY_SIMPLEX,
-                0.4,
-                cv::Scalar(0, 0, 255),
-                1);
-        }
+        auto_aim::drawCandidates(vis, gray_result.candidates);
         cv::imwrite(output_dir + "/" + stem + "_vis_binary.png", vis);
 
         std::cout << stem

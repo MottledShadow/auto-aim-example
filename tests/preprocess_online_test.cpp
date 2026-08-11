@@ -1,12 +1,9 @@
-#include <algorithm>
 #include <atomic>
 #include <chrono>
-#include <condition_variable>
 #include <cstdint>
 #include <exception>
 #include <iomanip>
 #include <iostream>
-#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -14,58 +11,13 @@
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
 
+#include "debug_draw.hpp"
 #include "detector.hpp"
 #include "hik_camera.hpp"
+#include "latest_slot.hpp"
 
 namespace
 {
-
-//最新帧槽：只保最新一份，被覆盖写入。序号变化即代表有新数据（和相机的 LatestImagesOnly 一致）
-template <typename T>
-struct LatestSlot
-{
-    std::mutex mutex;
-    std::condition_variable ready;
-    T payload;
-    std::uint64_t seq = 0;
-    std::atomic_bool running{true};
-
-    //生产者：覆盖 payload，序号 +1，唤醒一个消费者
-    void publish(T value)
-    {
-        {
-            std::lock_guard<std::mutex> lock(mutex);
-            payload = std::move(value);
-            ++seq;
-        }
-        ready.notify_one();
-    }
-
-    //消费者：等到有比 consumed 更新的数据或停止；返回 false 表示该退出了
-    bool wait(std::uint64_t& consumed, T& out)
-    {
-        std::unique_lock<std::mutex> lock(mutex);
-        ready.wait(lock, [&] { return seq != consumed || !running; });
-        if (!running)
-        {
-            return false;
-        }
-        out = payload;
-        consumed = seq;
-        return true;
-    }
-
-    //置停止并唤醒所有等待者
-    void stop()
-    {
-        running = false;
-        ready.notify_all();
-    }
-};
-
-//目标显示器分辨率：两张二值图左右并排后整体等比缩放到刚好放进这个尺寸
-constexpr int kScreenWidth = 1920;
-constexpr int kScreenHeight = 1080;
 
 //预处理线程交给显示线程的东西：原图 + 两种方法的检测结果（binary + candidates），绘图交给显示线程做
 struct FrameResult
@@ -88,8 +40,8 @@ int run()
     }
 
     //两级流水线各一个最新帧槽：相机原图 → 预处理产出（原图+检测结果，绘图留给显示线程）
-    LatestSlot<cv::Mat> slotRaw;
-    LatestSlot<FrameResult> slotVis;
+    auto_aim::LatestSlot<cv::Mat> slotRaw;
+    auto_aim::LatestSlot<FrameResult> slotVis;
 
     //帧率计数：取帧线程累加 captureCount，预处理线程累加 detectCount，主线程按秒读差值
     std::atomic<std::uint64_t> captureCount{0};
@@ -163,11 +115,8 @@ int run()
         cv::Mat combined;
         cv::hconcat(panel_gray, panel_channel, combined);
 
-        //整体等比缩放到刚好放进 1920x1080（不裁切，保留完整画面便于对比）
-        const double scale = std::min(
-            static_cast<double>(kScreenWidth) / combined.cols,
-            static_cast<double>(kScreenHeight) / combined.rows);
-        cv::resize(combined, combined, cv::Size(), scale, scale, cv::INTER_AREA);
+        //整体等比缩放到刚好放进屏幕（不裁切，保留完整画面便于对比）
+        auto_aim::fitToScreen(combined);
 
         cv::imshow("binarize compare", combined);
 

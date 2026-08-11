@@ -89,11 +89,13 @@ set_target_properties(snapshot
 add_executable(preprocess_offline_test
     tests/preprocess_offline_test.cpp
     detector/detector.cpp
+    debug_draw/debug_draw.cpp
 )
 
 target_include_directories(preprocess_offline_test
     PRIVATE
         "${PROJECT_SOURCE_DIR}/detector"
+        "${PROJECT_SOURCE_DIR}/debug_draw"
 )
 
 target_link_libraries(preprocess_offline_test
@@ -112,11 +114,13 @@ set_target_properties(preprocess_offline_test
 add_executable(lightbar_offline_test
     tests/lightbar_offline_test.cpp
     detector/detector.cpp
+    debug_draw/debug_draw.cpp
 )
 
 target_include_directories(lightbar_offline_test
     PRIVATE
         "${PROJECT_SOURCE_DIR}/detector"
+        "${PROJECT_SOURCE_DIR}/debug_draw"
 )
 
 target_link_libraries(lightbar_offline_test
@@ -136,12 +140,14 @@ add_executable(preprocess_online_test
     tests/preprocess_online_test.cpp
     hik_camera/hik_camera.cpp
     detector/detector.cpp
+    debug_draw/debug_draw.cpp
 )
 
 target_include_directories(preprocess_online_test
     PRIVATE
         "${PROJECT_SOURCE_DIR}/hik_camera"
         "${PROJECT_SOURCE_DIR}/detector"
+        "${PROJECT_SOURCE_DIR}/debug_draw"
         "${MVCAM_INCLUDE_DIR}"
 )
 
@@ -166,12 +172,14 @@ add_executable(lightbar_online_test
     tests/lightbar_online_test.cpp
     hik_camera/hik_camera.cpp
     detector/detector.cpp
+    debug_draw/debug_draw.cpp
 )
 
 target_include_directories(lightbar_online_test
     PRIVATE
         "${PROJECT_SOURCE_DIR}/hik_camera"
         "${PROJECT_SOURCE_DIR}/detector"
+        "${PROJECT_SOURCE_DIR}/debug_draw"
         "${MVCAM_INCLUDE_DIR}"
 )
 
