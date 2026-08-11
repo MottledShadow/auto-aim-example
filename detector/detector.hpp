@@ -76,4 +76,33 @@ std::vector<LightBar> filterLightBars(
     const PreprocessResult& preprocess,
     const LightBarFilterParams& params = {});
 
+enum class ArmorType
+{
+    Unknown = 0,
+    Small,
+    Large,
+};
+
+struct Armor
+{
+    LightBar left_light;
+    LightBar right_light;
+    cv::Point2f center;
+    ArmorType type = ArmorType::Unknown;
+};
+
+struct LightBarMatcherParams
+{
+    double max_light_length_ratio = 3.0;                 // 两灯条长度比上限（长/短）
+    double max_light_angle_diff_deg = 20.0;              // 两灯条角度差上限（度）
+    double max_light_center_y_diff = 400.0;              // 两灯条中心 y 差上限（像素）
+    double min_center_distance_ratio = 1.0;              // 中心距/平均灯条长 下限
+    double max_center_distance_ratio = 5.0;              // 中心距/平均灯条长 上限
+    double large_armor_min_center_distance_ratio = 3.2;  // 中心距比 ≥ 此值判大装甲
+};
+
+std::vector<Armor> matchArmors(
+    const std::vector<LightBar>& light_bars,
+    const LightBarMatcherParams& params = {});
+
 } // namespace auto_aim

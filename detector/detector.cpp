@@ -199,4 +199,109 @@ std::vector<LightBar> filterLightBars(
     return result;
 }
 
+std::vector<Armor> matchArmors(
+    const std::vector<LightBar>& light_bars,
+    const LightBarMatcherParams& params)
+{
+    std::vector<Armor> result;
+
+    //双重循环两两配对全部灯条
+    for (std::size_t i = 0; i < light_bars.size(); ++i)
+    {
+        for (std::size_t j = i + 1; j < light_bars.size(); ++j)
+        {
+            //按中心 x 归一左右，令 left 在左（x 较小）
+            std::size_t left_index = i;
+            std::size_t right_index = j;
+            if (light_bars[right_index].center.x < light_bars[left_index].center.x)
+            {
+                std::swap(left_index, right_index);
+            }
+            const LightBar& left = light_bars[left_index];
+            const LightBar& right = light_bars[right_index];
+
+            //同色判据：两灯条颜色相同且不是 Unknown，否则跳过
+            // TODO 这里当预处理方法为通道相减法的时候不需要
+            if (left.color == LightColor::Unknown || left.color != right.color)
+            {
+                continue;
+            }
+
+            //长度比：较长/较短，短灯条退化（≈0）跳过
+            const double min_length = std::min(left.length, right.length);
+            if (min_length <= kEpsilon)
+            {
+                continue;
+            }
+            const double length_ratio = std::max(left.length, right.length) / min_length;
+
+            //角度差、中心 y 差
+            const double angle_diff = std::abs(left.angle - right.angle);
+            const double center_y_diff = std::abs(left.center.y - right.center.y);
+
+            //中心距比：两中心欧氏距 / 平均灯条长，平均长退化跳过
+            const double average_height = (left.length + right.length) * 0.5;
+            if (average_height <= kEpsilon)
+            {
+                continue;
+            }
+            const double center_distance_ratio =
+                std::hypot(left.center.x - right.center.x, left.center.y - right.center.y) /
+                average_height;
+
+            //五项几何判据逐一范围筛选，任一超范围就跳过
+            if (length_ratio > params.max_light_length_ratio ||
+                angle_diff > params.max_light_angle_diff_deg ||
+                center_y_diff > params.max_light_center_y_diff ||
+                center_distance_ratio < params.min_center_distance_ratio ||
+                center_distance_ratio > params.max_center_distance_ratio)
+            {
+                continue;
+            }
+
+            //遮挡判据：两灯条上下端点围成的装甲四边形内若夹着其它灯条，跳过该对
+            const std::vector<cv::Point2f> region = {
+                left.top,
+                right.top,
+                right.bottom,
+                left.bottom,
+            };
+            bool has_light_between = false;
+            for (std::size_t k = 0; k < light_bars.size(); ++k)
+            {
+                if (k == left_index || k == right_index)
+                {
+                    continue;
+                }
+                const LightBar& other = light_bars[k];
+                if (cv::pointPolygonTest(region, other.top, false) >= 0.0 ||
+                    cv::pointPolygonTest(region, other.bottom, false) >= 0.0 ||
+                    cv::pointPolygonTest(region, other.center, false) >= 0.0)
+                {
+                    has_light_between = true;
+                    break;
+                }
+            }
+            if (has_light_between)
+            {
+                continue;
+            }
+
+            //大小分类：中心距比 ≥ 阈值判大装甲，否则小装甲
+            const ArmorType type = (center_distance_ratio >= params.large_armor_min_center_distance_ratio)
+                ? ArmorType::Large
+                : ArmorType::Small;
+
+            //组装装甲板，中心取两灯条中心的中点
+            result.push_back(Armor{
+                left,
+                right,
+                (left.center + right.center) * 0.5F,
+                type});
+        }
+    }
+
+    return result;
+}
+
 } // namespace auto_aim
