@@ -20,20 +20,20 @@ enum class LightColor
 
 struct PreprocessParams
 {
-    int binary_threshold = 125;  // 灰度二值化阈值
+    int binary_threshold = 90;  // 灰度二值化阈值
 };
 
 struct LightBarFilterParams
 {
-    double min_area = 20.0;
-    double max_area = 7000.0;
+    double min_area = 10.0;
+    double max_area = 6000.0;
     double min_aspect_ratio = 2.0;
-    double max_aspect_ratio = 10.0;
+    double max_aspect_ratio = 15.0;
     double min_line_angle_deg = 0.0;
     double max_line_angle_deg = 15.0;
-    double min_fill_ratio = 0.4;
+    double min_fill_ratio = 0.5;
     double max_fill_ratio = 1.0;
-    LightColor target_color = LightColor::Blue;  // 目标灯条颜色，非此色的灯条舍弃
+    LightColor target_color = LightColor::Red;  // 目标灯条颜色，非此色的灯条舍弃
 };
 
 struct LightBarMatcherParams
