@@ -247,12 +247,13 @@ std::vector<Armor> matchArmors(
                 ? ArmorType::Large
                 : ArmorType::Small;
 
-            //组装装甲板，中心取两灯条中心的中点
-            result.push_back(Armor{
-                left,
-                right,
-                (left.center + right.center) * 0.5F,
-                type});
+            //组装装甲板，中心取两灯条中心的中点（number/confidence 留待分类阶段填）
+            Armor armor;
+            armor.left_light = left;
+            armor.right_light = right;
+            armor.center = (left.center + right.center) * 0.5F;
+            armor.type = type;
+            result.push_back(armor);
         }
     }
 

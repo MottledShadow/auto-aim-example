@@ -5,6 +5,7 @@
 
 #include <opencv2/core.hpp>
 #include <opencv2/calib3d.hpp>
+#include <opencv2/dnn.hpp>
 
 namespace auto_aim
 {
@@ -38,12 +39,25 @@ struct LightBarFilterParams
 
 struct LightBarMatcherParams
 {
-    double max_light_length_ratio = 1.2;                 // 两灯条长度比上限（长/短）
+    double max_light_length_ratio = 1.5;                 // 两灯条长度比上限（长/短）
     double max_light_angle_diff_deg = 10.0;              // 两灯条角度差上限（度）// TODO 上车重点调整
-    double max_light_center_y_diff = 10.0;              // 两灯条中心 y 差上限（像素）
-    double min_center_distance_ratio = 2.3;              // 中心距/平均灯条长 下限
+    double max_light_center_y_diff = 30.0;              // 两灯条中心 y 差上限（像素）
+    double min_center_distance_ratio = 2.0;              // 中心距/平均灯条长 下限
     double max_center_distance_ratio = 6.0;              // 中心距/平均灯条长 上限
     double large_armor_min_center_distance_ratio = 4.0;  // 中心距比 ≥ 此值判大装甲
+};
+
+// 数字分类参数：矫正尺寸、ROI、模型/标签路径、置信度阈值
+struct NumberClassifierParams
+{
+    std::string model_path = "model/mlp.onnx";
+    std::string label_path = "model/label.txt";
+    int warp_height = 28;         // 矫正后高度
+    int light_length = 12;        // 灯条长度占 28 像素中间的 12 像素
+    int small_armor_width = 32;   // 小装甲矫正宽度
+    int large_armor_width = 54;   // 大装甲矫正宽度
+    int roi_width = 20;           // 取中间 20×28 ROI（高沿用 warp_height）
+    double confidence_threshold = 0.7;  // 最大概率低于此值丢弃
 };
 
 // PnP 位姿解算参数：装甲板物理尺寸(mm) + solvePnP 方法（尺寸暂沿用占位值）
@@ -95,6 +109,16 @@ struct Armor
     LightBar right_light;
     cv::Point2f center;
     ArmorType type = ArmorType::Unknown;
+    std::string number;          // 分类得到的数字/标签，空表示未分类
+    float confidence = 0.0F;     // 分类 softmax 最大概率
+};
+
+// 数字分类器：ONNX 网络 + 标签表；error 为空表示加载成功
+struct NumberClassifier
+{
+    cv::dnn::Net net;
+    std::vector<std::string> labels;
+    std::string error;
 };
 
 // 相机标定：内参矩阵、畸变系数；error 为空表示加载成功
@@ -125,6 +149,14 @@ std::vector<LightBar> filterLightBars(
 std::vector<Armor> matchArmors(
     const std::vector<LightBar>& light_bars,
     const LightBarMatcherParams& params = {});
+
+NumberClassifier loadClassifier(const NumberClassifierParams& params = {});
+
+std::vector<Armor> classifyArmors(
+    const cv::Mat& frame,
+    const std::vector<Armor>& armors,
+    NumberClassifier& classifier,
+    const NumberClassifierParams& params = {});
 
 CameraCalibration loadCalibration(const std::string& path = "config/camera_calibration.yml");
 

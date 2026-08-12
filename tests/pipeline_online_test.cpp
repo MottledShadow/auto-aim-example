@@ -28,9 +28,11 @@ struct FrameResult
     auto_aim::PreprocessResult processed;
     //armor 用：筛选通过的灯条
     std::vector<auto_aim::LightBar> bars;
+    //number 用：分类过滤后保留的装甲板（含数字+置信度）
+    std::vector<auto_aim::Armor> classified;
     //pnp 用：解算出的位姿
     std::vector<auto_aim::ArmorPose> poses;
-    //本帧计数（含义随阶段而变：通过灯条数 / 配对装甲数）
+    //本帧计数（含义随阶段而变：通过灯条数 / 配对装甲数 / 保留装甲数）
     std::size_t count = 0;
 };
 
@@ -44,6 +46,18 @@ int run(const std::string& stage)
         if (!calibration.error.empty())
         {
             std::cerr << "calibration load failed: " << calibration.error << '\n';
+        }
+    }
+
+    //number/pnp 阶段需要数字分类器，加载一次（网络有状态、开销大），失败只告警
+    auto_aim::NumberClassifierParams number_params;
+    auto_aim::NumberClassifier classifier;
+    if (stage == "number" || stage == "pnp")
+    {
+        classifier = auto_aim::loadClassifier(number_params);
+        if (!classifier.error.empty())
+        {
+            std::cerr << "classifier load failed: " << classifier.error << '\n';
         }
     }
 
@@ -122,15 +136,27 @@ int run(const std::string& stage)
                 const std::vector<auto_aim::Armor> armors = auto_aim::matchArmors(output.bars, matcher_params);
                 output.count = armors.size();
             }
-            else
+            else if (stage == "number")
             {
-                //pnp：跑到位姿解算，位姿留给显示线程画框标注
+                //跑到数字分类，保留装甲板留给显示线程画框标注数字
                 const auto_aim::PreprocessResult processed = auto_aim::preprocess(frame, pre_params);
                 const std::vector<auto_aim::LightBar> bars =
                     auto_aim::filterLightBars(frame, processed, filter_params);
                 const std::vector<auto_aim::Armor> armors = auto_aim::matchArmors(bars, matcher_params);
-                output.poses = auto_aim::solvePnp(armors, calibration, pnp_params);
-                output.count = armors.size();
+                output.classified = auto_aim::classifyArmors(frame, armors, classifier, number_params);
+                output.count = output.classified.size();
+            }
+            else
+            {
+                //pnp：先分类过滤再解算位姿，位姿留给显示线程画框标注
+                const auto_aim::PreprocessResult processed = auto_aim::preprocess(frame, pre_params);
+                const std::vector<auto_aim::LightBar> bars =
+                    auto_aim::filterLightBars(frame, processed, filter_params);
+                const std::vector<auto_aim::Armor> armors = auto_aim::matchArmors(bars, matcher_params);
+                const std::vector<auto_aim::Armor> classified =
+                    auto_aim::classifyArmors(frame, armors, classifier, number_params);
+                output.poses = auto_aim::solvePnp(classified, calibration, pnp_params);
+                output.count = classified.size();
             }
 
             slotVis.publish(std::move(output));
@@ -155,6 +181,11 @@ int run(const std::string& stage)
     {
         window_name = "armor match";
         std::cout << "一个窗口：对所有同色灯条对按配对公式画装甲框(接受绿/被拒红)并逐项标注；q/ESC 退出\n";
+    }
+    else if (stage == "number")
+    {
+        window_name = "number classify";
+        std::cout << "一个窗口：画分类保留的装甲板框并标注 数字(置信度)；q/ESC 退出\n";
     }
     else
     {
@@ -203,6 +234,28 @@ int run(const std::string& stage)
                         cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(0, 255, 0), 2);
             fps_suffix = " matched=" + std::to_string(result_frame.count);
         }
+        else if (stage == "number")
+        {
+            //number：逐个保留装甲板画框并标注 数字(置信度)
+            vis = result_frame.frame.clone();
+            for (const auto_aim::Armor& armor : result_frame.classified)
+            {
+                const std::vector<cv::Point> quad = {
+                    armor.left_light.top,
+                    armor.right_light.top,
+                    armor.right_light.bottom,
+                    armor.left_light.bottom,
+                };
+                cv::polylines(vis, quad, true, cv::Scalar(0, 255, 0), 2);
+                char label[32];
+                std::snprintf(label, sizeof(label), "%s %.2f", armor.number.c_str(), armor.confidence);
+                cv::putText(vis, label, cv::Point(armor.center.x, armor.center.y - 10),
+                            cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(0, 255, 0), 2);
+            }
+            cv::putText(vis, "number classify (default params)  kept=" + std::to_string(result_frame.count),
+                        cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(0, 255, 0), 2);
+            fps_suffix = " kept=" + std::to_string(result_frame.count);
+        }
         else
         {
             //pnp：逐位姿画装甲四边形并标注 rvec/tvec
@@ -233,10 +286,10 @@ int run(const std::string& stage)
                 cv::putText(vis, tvec_text, tvec_org, cv::FONT_HERSHEY_SIMPLEX, 0.5,
                             cv::Scalar(0, 255, 0), 2);
             }
-            cv::putText(vis, "pnp (default params)  matched=" + std::to_string(result_frame.count)
+            cv::putText(vis, "pnp (default params)  kept=" + std::to_string(result_frame.count)
                             + " solved=" + std::to_string(result_frame.poses.size()),
                         cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(0, 255, 0), 2);
-            fps_suffix = " matched=" + std::to_string(result_frame.count)
+            fps_suffix = " kept=" + std::to_string(result_frame.count)
                        + " solved=" + std::to_string(result_frame.poses.size());
         }
 
@@ -288,11 +341,12 @@ int run(const std::string& stage)
 
 int main(int argc, char** argv)
 {
-    //第一个参数选调试阶段：preprocess | lightbar | armor | pnp，逐阶段实时预览
+    //第一个参数选调试阶段：preprocess | lightbar | armor | number | pnp，逐阶段实时预览
     const std::string stage = (argc > 1) ? argv[1] : "";
-    if (stage != "preprocess" && stage != "lightbar" && stage != "armor" && stage != "pnp")
+    if (stage != "preprocess" && stage != "lightbar" && stage != "armor" &&
+        stage != "number" && stage != "pnp")
     {
-        std::cerr << "usage: pipeline_online_test <preprocess|lightbar|armor|pnp>\n";
+        std::cerr << "usage: pipeline_online_test <preprocess|lightbar|armor|number|pnp>\n";
         return 1;
     }
 

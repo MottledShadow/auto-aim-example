@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs highgui calib3d)
+find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs highgui calib3d dnn)
 find_package(Threads REQUIRED)
 
 set(MVCAM_ROOT "/opt/MVS" CACHE PATH "Hikrobot MVS SDK root directory")
@@ -117,6 +117,7 @@ add_executable(pipeline_offline_test
     tests/pipeline_offline_test.cpp
     detector/detector.cpp
     detector/detector_pnp.cpp
+    detector/classifier.cpp
     debug_draw/debug_draw.cpp
 )
 
@@ -144,6 +145,7 @@ add_executable(pipeline_online_test
     hik_camera/hik_camera.cpp
     detector/detector.cpp
     detector/detector_pnp.cpp
+    detector/classifier.cpp
     debug_draw/debug_draw.cpp
 )
 
