@@ -4,8 +4,6 @@
 #include <vector>
 
 #include <opencv2/core.hpp>
-#include <opencv2/calib3d.hpp>
-#include <opencv2/dnn.hpp>
 
 namespace auto_aim
 {
@@ -45,29 +43,6 @@ struct LightBarMatcherParams
     double min_center_distance_ratio = 2.0;              // 中心距/平均灯条长 下限
     double max_center_distance_ratio = 6.0;              // 中心距/平均灯条长 上限
     double large_armor_min_center_distance_ratio = 4.0;  // 中心距比 ≥ 此值判大装甲
-};
-
-// 数字分类参数：矫正尺寸、ROI、模型/标签路径、置信度阈值
-struct NumberClassifierParams
-{
-    std::string model_path = "model/mlp.onnx";
-    std::string label_path = "model/label.txt";
-    int warp_height = 28;         // 矫正后高度
-    int light_length = 12;        // 灯条长度占 28 像素中间的 12 像素
-    int small_armor_width = 32;   // 小装甲矫正宽度
-    int large_armor_width = 54;   // 大装甲矫正宽度
-    int roi_width = 20;           // 取中间 20×28 ROI（高沿用 warp_height）
-    double confidence_threshold = 0.7;  // 最大概率低于此值丢弃
-};
-
-// PnP 位姿解算参数：装甲板物理尺寸(mm) + solvePnP 方法（尺寸暂沿用占位值）
-struct PnpSolverParams
-{
-    double small_armor_width = 130.0;
-    double small_armor_height = 60.0;
-    double large_armor_width = 230.0;
-    double large_armor_height = 55.0;
-    int solve_pnp_method = cv::SOLVEPNP_IPPE;
 };
 
 // ========== 数据结构体 ==========
@@ -113,30 +88,6 @@ struct Armor
     float confidence = 0.0F;     // 分类 softmax 最大概率
 };
 
-// 数字分类器：ONNX 网络 + 标签表；error 为空表示加载成功
-struct NumberClassifier
-{
-    cv::dnn::Net net;
-    std::vector<std::string> labels;
-    std::string error;
-};
-
-// 相机标定：内参矩阵、畸变系数；error 为空表示加载成功
-struct CameraCalibration
-{
-    cv::Mat camera_matrix;
-    cv::Mat dist_coeffs;
-    std::string error;
-};
-
-// 单块装甲板的位姿（相机坐标系下的旋转/平移向量）
-struct ArmorPose
-{
-    Armor armor;
-    cv::Mat rvec;
-    cv::Mat tvec;
-};
-
 // ========== 函数接口 ==========
 
 PreprocessResult preprocess(const cv::Mat& frame, const PreprocessParams& params = {});
@@ -150,19 +101,9 @@ std::vector<Armor> matchArmors(
     const std::vector<LightBar>& light_bars,
     const LightBarMatcherParams& params = {});
 
-NumberClassifier loadClassifier(const NumberClassifierParams& params = {});
-
-std::vector<Armor> classifyArmors(
-    const cv::Mat& frame,
-    const std::vector<Armor>& armors,
-    NumberClassifier& classifier,
-    const NumberClassifierParams& params = {});
-
-CameraCalibration loadCalibration(const std::string& path = "config/camera_calibration.yml");
-
-std::vector<ArmorPose> solvePnp(
-    const std::vector<Armor>& armors,
-    const CameraCalibration& calibration,
-    const PnpSolverParams& params = {});
-
 } // namespace auto_aim
+
+// 伞头：下游只需 include "detector.hpp" 即可拿到分类与 PnP 接口
+// 放在文件末尾，确保上面的共享类型（Armor 等）先于子头可见，化解环形包含
+#include "classifier.hpp"
+#include "pnp.hpp"
