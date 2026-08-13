@@ -31,6 +31,9 @@ if(NOT MVCAM_LIBRARY)
         "Set MVCAM_ROOT or MVCAM_LIBRARY_DIR when configuring CMake.")
 endif()
 
+# detector 识别模块（静态库），头文件路径经 PUBLIC 传递给下游 target
+add_subdirectory(detector)
+
 add_executable(hik_camera_test
     tests/hik_camera_test.cpp
     hik_camera/hik_camera.cpp
@@ -115,20 +118,17 @@ set_target_properties(calibrate_camera
 # 离线分阶段调试测试：读磁盘图片，命令行 <stage> 选阶段(preprocess/lightbar/armor/pnp)，只依赖 OpenCV，不链接相机 SDK
 add_executable(pipeline_offline_test
     tests/pipeline_offline_test.cpp
-    detector/detector.cpp
-    detector/pnp.cpp
-    detector/classifier.cpp
     debug_draw/debug_draw.cpp
 )
 
 target_include_directories(pipeline_offline_test
     PRIVATE
-        "${PROJECT_SOURCE_DIR}/detector"
         "${PROJECT_SOURCE_DIR}/debug_draw"
 )
 
 target_link_libraries(pipeline_offline_test
     PRIVATE
+        detector
         ${OpenCV_LIBS}
 )
 
@@ -143,22 +143,19 @@ set_target_properties(pipeline_offline_test
 add_executable(pipeline_online_test
     tests/pipeline_online_test.cpp
     hik_camera/hik_camera.cpp
-    detector/detector.cpp
-    detector/pnp.cpp
-    detector/classifier.cpp
     debug_draw/debug_draw.cpp
 )
 
 target_include_directories(pipeline_online_test
     PRIVATE
         "${PROJECT_SOURCE_DIR}/hik_camera"
-        "${PROJECT_SOURCE_DIR}/detector"
         "${PROJECT_SOURCE_DIR}/debug_draw"
         "${MVCAM_INCLUDE_DIR}"
 )
 
 target_link_libraries(pipeline_online_test
     PRIVATE
+        detector
         ${OpenCV_LIBS}
         "${MVCAM_LIBRARY}"
         Threads::Threads

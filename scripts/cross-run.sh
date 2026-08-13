@@ -38,7 +38,7 @@ if [[ "$stage" == "pnp" ]]; then
 fi
 # number/pnp 需要数字分类模型：把 model/（mlp.onnx + label.txt）送过去，工作目录为 ~/cross-snapshot
 if [[ "$stage" == "number" || "$stage" == "pnp" ]]; then
-    scp -r "$project_dir/model" "$target:$remote_dir/model"
+    scp -r "$project_dir/detector/model" "$target:$remote_dir/model"
 fi
 
 echo "Running $binary_name ($stage) on Jetson..."
