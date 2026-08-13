@@ -83,30 +83,30 @@ bool detectCorners(const cv::Mat& gray, std::vector<cv::Point2f>& corners, bool 
 }
 
 int calibrateAndSave(
-    const std::vector<std::vector<cv::Point2f>>& image_points,
-    cv::Size image_size)
+    const std::vector<std::vector<cv::Point2f>>& imagePoints,
+    cv::Size imageSize)
 {
-    if (image_points.size() < kRequiredViews)
+    if (imagePoints.size() < kRequiredViews)
     {
         std::cerr << "need at least " << kRequiredViews
-                  << " detected views to calibrate, got " << image_points.size() << '\n';
+                  << " detected views to calibrate, got " << imagePoints.size() << '\n';
         return 1;
     }
 
     const std::vector<cv::Point3f> object = makeObjectPoints();
-    const std::vector<std::vector<cv::Point3f>> object_points(image_points.size(), object);
+    const std::vector<std::vector<cv::Point3f>> objectPoints(imagePoints.size(), object);
 
-    cv::Mat camera_matrix;
-    cv::Mat dist_coeffs;
+    cv::Mat cameraMatrix;
+    cv::Mat distCoeffs;
     const double rms = cv::calibrateCamera(
-        object_points, image_points, image_size, camera_matrix, dist_coeffs,
+        objectPoints, imagePoints, imageSize, cameraMatrix, distCoeffs,
         cv::noArray(), cv::noArray());
 
-    std::cout << "views=" << image_points.size()
-              << " size=" << image_size.width << 'x' << image_size.height
+    std::cout << "views=" << imagePoints.size()
+              << " size=" << imageSize.width << 'x' << imageSize.height
               << " rms_reproj_error=" << rms << " px\n"
-              << "camera_matrix=\n" << camera_matrix << '\n'
-              << "dist_coeffs=" << dist_coeffs << '\n';
+              << "camera_matrix=\n" << cameraMatrix << '\n'
+              << "dist_coeffs=" << distCoeffs << '\n';
 
     const std::filesystem::path output(kOutputPath);
     std::filesystem::create_directories(output.parent_path());
@@ -115,23 +115,23 @@ int calibrateAndSave(
     {
         throw std::runtime_error("cannot open output file for writing: " + std::string(kOutputPath));
     }
-    storage << "camera_matrix" << camera_matrix;
-    storage << "dist_coeffs" << dist_coeffs;
+    storage << "camera_matrix" << cameraMatrix;
+    storage << "dist_coeffs" << distCoeffs;
     storage.release();
     std::cout << "saved=" << kOutputPath << '\n';
     return 0;
 }
 
-int runImages(const std::string& images_dir)
+int runImages(const std::string& imagesDir)
 {
     namespace fs = std::filesystem;
-    if (!fs::exists(images_dir) || !fs::is_directory(images_dir))
+    if (!fs::exists(imagesDir) || !fs::is_directory(imagesDir))
     {
-        throw std::runtime_error("images directory not found: " + images_dir);
+        throw std::runtime_error("images directory not found: " + imagesDir);
     }
 
     std::vector<std::string> files;
-    for (const auto& entry : fs::directory_iterator(images_dir))
+    for (const auto& entry : fs::directory_iterator(imagesDir))
     {
         if (entry.is_regular_file())
         {
@@ -140,8 +140,8 @@ int runImages(const std::string& images_dir)
     }
     std::sort(files.begin(), files.end());
 
-    std::vector<std::vector<cv::Point2f>> image_points;
-    cv::Size image_size;
+    std::vector<std::vector<cv::Point2f>> imagePoints;
+    cv::Size imageSize;
     for (const auto& file : files)
     {
         const cv::Mat image = cv::imread(file, cv::IMREAD_COLOR);
@@ -153,8 +153,8 @@ int runImages(const std::string& images_dir)
         std::vector<cv::Point2f> corners;
         if (detectCorners(gray, corners, true))
         {
-            image_points.push_back(corners);
-            image_size = gray.size();
+            imagePoints.push_back(corners);
+            imageSize = gray.size();
             std::cout << "ok   " << file << '\n';
         }
         else
@@ -163,30 +163,30 @@ int runImages(const std::string& images_dir)
         }
     }
 
-    return calibrateAndSave(image_points, image_size);
+    return calibrateAndSave(imagePoints, imageSize);
 }
 
 int runLive()
 {
     auto_aim::HikCamera camera;
-    const int init_result = camera.initialize();
-    if (init_result != MV_OK)
+    const int initResult = camera.initialize();
+    if (initResult != MV_OK)
     {
         std::cerr << "initialize failed: 0x"
-                  << std::hex << static_cast<unsigned int>(init_result) << '\n';
+                  << std::hex << static_cast<unsigned int>(initResult) << '\n';
         return 1;
     }
 
-    std::vector<std::vector<cv::Point2f>> image_points;
-    cv::Size image_size;
+    std::vector<std::vector<cv::Point2f>> imagePoints;
+    cv::Size imageSize;
 
     std::cout << "live calibration: SPACE accept view, u undo last, ENTER calibrate, ESC quit\n";
 
     while (true)
     {
         auto_aim::HikCameraFrame frame;
-        const int grab_result = camera.capture(frame, kTimeoutMs);
-        if (grab_result != MV_OK)
+        const int grabResult = camera.capture(frame, kTimeoutMs);
+        if (grabResult != MV_OK)
         {
             std::cerr << "warning: frame timeout/error\n";
             continue;
@@ -194,9 +194,9 @@ int runLive()
 
         cv::Mat preview;
         cv::resize(frame.image, preview, {}, kPreviewScale, kPreviewScale, cv::INTER_AREA);
-        const cv::Mat preview_gray = toGray(preview);
+        const cv::Mat previewGray = toGray(preview);
         std::vector<cv::Point2f> corners;
-        const bool found = detectCorners(preview_gray, corners, false);
+        const bool found = detectCorners(previewGray, corners, false);
 
         cv::Mat display;
         if (preview.channels() == 1)
@@ -210,7 +210,7 @@ int runLive()
         cv::drawChessboardCorners(display, kPatternSize, corners, found);
         cv::putText(
             display,
-            "views=" + std::to_string(image_points.size()) + "/" + std::to_string(kRequiredViews) +
+            "views=" + std::to_string(imagePoints.size()) + "/" + std::to_string(kRequiredViews) +
                 (found ? "  board:OK" : "  board:--"),
             cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 0.8,
             found ? cv::Scalar(0, 255, 0) : cv::Scalar(0, 0, 255), 2);
@@ -223,12 +223,12 @@ int runLive()
         }
         if (key == 13 || key == 10)
         {
-            if (image_points.size() < kRequiredViews)
+            if (imagePoints.size() < kRequiredViews)
             {
-                std::cout << "need " << kRequiredViews << " views, got " << image_points.size() << '\n';
+                std::cout << "need " << kRequiredViews << " views, got " << imagePoints.size() << '\n';
                 continue;
             }
-            return calibrateAndSave(image_points, image_size);
+            return calibrateAndSave(imagePoints, imageSize);
         }
         if (key == ' ')
         {
@@ -236,19 +236,19 @@ int runLive()
             std::vector<cv::Point2f> refined;
             if (detectCorners(gray, refined, true))
             {
-                image_points.push_back(refined);
-                image_size = gray.size();
-                std::cout << "accepted view " << image_points.size() << '\n';
+                imagePoints.push_back(refined);
+                imageSize = gray.size();
+                std::cout << "accepted view " << imagePoints.size() << '\n';
             }
             else
             {
                 std::cout << "no chessboard detected, view not accepted\n";
             }
         }
-        else if ((key == 'u' || key == 'U') && !image_points.empty())
+        else if ((key == 'u' || key == 'U') && !imagePoints.empty())
         {
-            image_points.pop_back();
-            std::cout << "removed last view, now " << image_points.size() << '\n';
+            imagePoints.pop_back();
+            std::cout << "removed last view, now " << imagePoints.size() << '\n';
         }
     }
 

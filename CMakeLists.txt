@@ -62,7 +62,7 @@ set_target_properties(hik_camera_test
 )
 
 add_executable(snapshot
-    tools/snapshot_main.cpp
+    tools/snapshot.cpp
     hik_camera/hik_camera.cpp
 )
 
@@ -89,7 +89,7 @@ set_target_properties(snapshot
 )
 
 add_executable(calibrate_camera
-    tools/calibrate_main.cpp
+    tools/calibrate_camera.cpp
     hik_camera/hik_camera.cpp
 )
 
@@ -115,45 +115,45 @@ set_target_properties(calibrate_camera
         INSTALL_RPATH "${MVCAM_LIBRARY_DIR}"
 )
 
-# 离线分阶段调试测试：读磁盘图片，命令行 <stage> 选阶段(preprocess/lightbar/armor/pnp)，只依赖 OpenCV，不链接相机 SDK
-add_executable(pipeline_offline_test
-    tests/pipeline_offline_test.cpp
+# 识别器离线调试工具（读磁盘图片）：一次跑完整流水线、每图一目录输出五阶段标注图，只依赖 OpenCV，不链接相机 SDK
+add_executable(detector_debug_file
+    tests/detector_debug_file.cpp
     debug_draw/debug_draw.cpp
 )
 
-target_include_directories(pipeline_offline_test
+target_include_directories(detector_debug_file
     PRIVATE
         "${PROJECT_SOURCE_DIR}/debug_draw"
 )
 
-target_link_libraries(pipeline_offline_test
+target_link_libraries(detector_debug_file
     PRIVATE
         detector
         ${OpenCV_LIBS}
 )
 
-target_compile_options(pipeline_offline_test PRIVATE -Wall -Wextra -Wpedantic)
+target_compile_options(detector_debug_file PRIVATE -Wall -Wextra -Wpedantic)
 
-set_target_properties(pipeline_offline_test
+set_target_properties(detector_debug_file
     PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}"
 )
 
-# 在线分阶段调试测试：连相机实时取帧，命令行 <stage> 选阶段 → 单窗口显示（取帧/处理/显示 各一线程）
-add_executable(pipeline_online_test
-    tests/pipeline_online_test.cpp
+# 识别器在线调试工具（接相机实时）：每帧跑完整流水线 → 单窗口按 1-5 键切换/叠加各阶段标注层（取帧/处理/显示 各一线程）
+add_executable(detector_debug_camera
+    tests/detector_debug_camera.cpp
     hik_camera/hik_camera.cpp
     debug_draw/debug_draw.cpp
 )
 
-target_include_directories(pipeline_online_test
+target_include_directories(detector_debug_camera
     PRIVATE
         "${PROJECT_SOURCE_DIR}/hik_camera"
         "${PROJECT_SOURCE_DIR}/debug_draw"
         "${MVCAM_INCLUDE_DIR}"
 )
 
-target_link_libraries(pipeline_online_test
+target_link_libraries(detector_debug_camera
     PRIVATE
         detector
         ${OpenCV_LIBS}
@@ -161,9 +161,9 @@ target_link_libraries(pipeline_online_test
         Threads::Threads
 )
 
-target_compile_options(pipeline_online_test PRIVATE -Wall -Wextra -Wpedantic)
+target_compile_options(detector_debug_camera PRIVATE -Wall -Wextra -Wpedantic)
 
-set_target_properties(pipeline_online_test
+set_target_properties(detector_debug_camera
     PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}"
         BUILD_RPATH "${MVCAM_LIBRARY_DIR}"
