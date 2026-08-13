@@ -23,20 +23,37 @@ struct NumberClassifierParams
     double confidence_threshold = 0.7;  // 最大概率低于此值丢弃
 };
 
-// 数字分类器：ONNX 网络 + 标签表；error 为空表示加载成功
-struct NumberClassifier
+// 数字分类器：构造时加载 ONNX 网络 + 标签表，之后每帧复用
+class NumberClassifier
 {
-    cv::dnn::Net net;
-    std::vector<std::string> labels;
-    std::string error;
+public:
+    explicit NumberClassifier(const NumberClassifierParams& params = {});
+
+    //加载失败原因，空表示加载成功
+    const std::string& error() const { return error_; }
+
+    //对配对装甲板逐块分类，返回通过四条去留规则的装甲板（写回 number/confidence）
+    std::vector<Armor> classify(const cv::Mat& frame, const std::vector<Armor>& armors);
+
+    //单块装甲的完整推理产物：矫正 ROI、二值图、全类别 softmax、最大类下标与概率（调试用）
+    struct Diagnosis
+    {
+        cv::Mat roi;
+        cv::Mat binary;
+        std::vector<float> probs;
+        int class_index = 0;
+        float confidence = 0.0F;
+    };
+    Diagnosis diagnose(const cv::Mat& frame, const Armor& armor);
+
+    //标签表（供调试打印类别名）
+    const std::vector<std::string>& labels() const { return labels_; }
+
+private:
+    NumberClassifierParams params_;
+    cv::dnn::Net net_;
+    std::vector<std::string> labels_;
+    std::string error_;
 };
-
-NumberClassifier loadClassifier(const NumberClassifierParams& params = {});
-
-std::vector<Armor> classifyArmors(
-    const cv::Mat& frame,
-    const std::vector<Armor>& armors,
-    NumberClassifier& classifier,
-    const NumberClassifierParams& params = {});
 
 } // namespace auto_aim

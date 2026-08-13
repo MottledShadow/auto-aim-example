@@ -2,6 +2,7 @@
 #include <filesystem>
 #include <iomanip>
 #include <iostream>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -29,15 +30,14 @@ int main(int argc, char** argv)
     const std::string output_root = (argc > 3) ? argv[3] : "test_output";
     const std::string calib_path = (argc > 4) ? argv[4] : "config/camera_calibration.yml";
 
-    //各阶段参数都走头文件默认值；要改阈值直接改 detector.hpp
-    auto_aim::PreprocessParams pre_params;
-    auto_aim::LightBarFilterParams filter_params;
-    auto_aim::LightBarMatcherParams matcher_params;
+    //检测器无状态，参数走头文件默认值；要改阈值直接改 detector.hpp
+    auto_aim::Detector detector;
     auto_aim::PnpSolverParams pnp_params;
     auto_aim::NumberClassifierParams number_params;
 
-    //只有 pnp 阶段需要相机标定，失败只告警不退出（solvePnp 会返回空位姿）
+    //只有 pnp 阶段需要相机标定与解算器，标定失败只告警不退出（solve 会返回空位姿）
     auto_aim::CameraCalibration calibration;
+    std::optional<auto_aim::PnpSolver> pnp_solver;
     if (stage == "pnp")
     {
         calibration = auto_aim::loadCalibration(calib_path);
@@ -45,21 +45,22 @@ int main(int argc, char** argv)
         {
             std::cerr << "calibration load failed: " << calibration.error << '\n';
         }
+        pnp_solver.emplace(calibration, pnp_params);
     }
 
-    //number/pnp 阶段需要数字分类器，加载一次（网络有状态、开销大），失败只告警
-    auto_aim::NumberClassifier classifier;
+    //number/pnp 阶段需要数字分类器，构造时加载一次（网络有状态、开销大），失败只告警
+    std::optional<auto_aim::NumberClassifier> classifier;
     if (stage == "number" || stage == "pnp")
     {
-        classifier = auto_aim::loadClassifier(number_params);
-        if (!classifier.error.empty())
+        classifier.emplace(number_params);
+        if (!classifier->error().empty())
         {
-            std::cerr << "classifier load failed: " << classifier.error << '\n';
+            std::cerr << "classifier load failed: " << classifier->error() << '\n';
         }
     }
 
     //输出文件夹名标明灰度阈值，比时间戳直观
-    const std::string method_tag = "gray" + std::to_string(pre_params.binary_threshold);
+    const std::string method_tag = "gray" + std::to_string(detector.preprocess_params.binary_threshold);
 
     std::string output_dir;
     if (stage == "preprocess")
@@ -103,7 +104,7 @@ int main(int argc, char** argv)
         //preprocess：灰度二值化跑一次，二值图 + 候选可视化各存一张
         if (stage == "preprocess")
         {
-            const auto_aim::PreprocessResult gray_result = auto_aim::preprocess(frame, pre_params);
+            const auto_aim::PreprocessResult gray_result = detector.preprocess(frame);
 
             //灰度二值图存一张
             cv::imwrite(output_dir + "/" + stem + "_binary.png", gray_result.binary);
@@ -119,16 +120,16 @@ int main(int argc, char** argv)
         }
 
         //lightbar/armor/pnp 都从预处理起步，先存一张二值图，方便对照灯条是怎么来的
-        const auto_aim::PreprocessResult pre = auto_aim::preprocess(frame, pre_params);
+        const auto_aim::PreprocessResult pre = detector.preprocess(frame);
         cv::imwrite(output_dir + "/" + stem + "_binary.png", pre.binary);
 
         //lightbar：预处理 → 筛选，遍历全部候选按公式重算四项指标标注
         if (stage == "lightbar")
         {
-            const std::vector<auto_aim::LightBar> bars = auto_aim::filterLightBars(frame, pre, filter_params);
+            const std::vector<auto_aim::LightBar> bars = detector.filterLightBars(frame, pre);
 
             cv::Mat vis = frame.clone();
-            const std::size_t test_passed = auto_aim::drawLightBarMetrics(vis, pre.candidates, filter_params);
+            const std::size_t test_passed = auto_aim::drawLightBarMetrics(vis, pre.candidates, detector.filter_params);
             cv::imwrite(output_dir + "/" + stem + "_lightbar.png", vis);
 
             //filter_passed 与 test_passed 应一致，是对 filterLightBars 的一致性自检
@@ -140,14 +141,14 @@ int main(int argc, char** argv)
         }
 
         //armor/pnp 都要先筛选灯条再配对
-        const std::vector<auto_aim::LightBar> bars = auto_aim::filterLightBars(frame, pre, filter_params);
-        const std::vector<auto_aim::Armor> armors = auto_aim::matchArmors(bars, matcher_params);
+        const std::vector<auto_aim::LightBar> bars = detector.filterLightBars(frame, pre);
+        const std::vector<auto_aim::Armor> armors = detector.matchArmors(bars);
 
         //armor：遍历全部同色灯条对，按公式重算配对指标画装甲框+标注
         if (stage == "armor")
         {
             cv::Mat vis = frame.clone();
-            const std::size_t draw_passed = auto_aim::drawArmorMetrics(vis, bars, matcher_params);
+            const std::size_t draw_passed = auto_aim::drawArmorMetrics(vis, bars, detector.matcher_params);
             cv::imwrite(output_dir + "/" + stem + "_armor.png", vis);
 
             //matched 与 draw_passed 应一致，是对 matchArmors 的一致性自检
@@ -163,61 +164,22 @@ int main(int argc, char** argv)
         if (stage == "number")
         {
             const std::vector<auto_aim::Armor> kept =
-                auto_aim::classifyArmors(frame, armors, classifier, number_params);
+                classifier->classify(frame, armors);
 
-            //灯条落在矫正图中间 light_length 像素，与 classifyArmors 一致
-            const int top_y = (number_params.warp_height - number_params.light_length) / 2;
-            const int bottom_y = top_y + number_params.light_length;
-
-            //逐个配对装甲板重算矫正+大津+推理，存 ROI/二值图、打印完整 softmax，被拒的也画（红）
+            //逐个配对装甲板重算推理，存 ROI/二值图、打印完整 softmax，被拒的也画（红）
             cv::Mat vis = frame.clone();
             std::size_t keep_passed = 0;
             for (std::size_t a = 0; a < armors.size(); ++a)
             {
                 const auto_aim::Armor& armor = armors[a];
-                const std::vector<cv::Point2f> src = {
-                    armor.left_light.top,
-                    armor.right_light.top,
-                    armor.right_light.bottom,
-                    armor.left_light.bottom,
-                };
-                const int warp_width = (armor.type == auto_aim::ArmorType::Large)
-                    ? number_params.large_armor_width
-                    : number_params.small_armor_width;
-                const std::vector<cv::Point2f> dst = {
-                    {0.0F, static_cast<float>(top_y)},
-                    {static_cast<float>(warp_width), static_cast<float>(top_y)},
-                    {static_cast<float>(warp_width), static_cast<float>(bottom_y)},
-                    {0.0F, static_cast<float>(bottom_y)},
-                };
-                const cv::Mat perspective = cv::getPerspectiveTransform(src, dst);
-                cv::Mat warped;
-                cv::warpPerspective(frame, warped, perspective,
-                                    cv::Size(warp_width, number_params.warp_height));
-                const int roi_x = (warp_width - number_params.roi_width) / 2;
-                const cv::Mat roi = warped(cv::Rect(roi_x, 0, number_params.roi_width, number_params.warp_height));
-                cv::Mat gray;
-                cv::cvtColor(roi, gray, cv::COLOR_BGR2GRAY);
-                cv::Mat binary;
-                cv::threshold(gray, binary, 0.0, 255.0, cv::THRESH_BINARY | cv::THRESH_OTSU);
 
-                cv::imwrite(output_dir + "/" + stem + "_number_roi_" + std::to_string(a) + ".png", roi);
-                cv::imwrite(output_dir + "/" + stem + "_number_bin_" + std::to_string(a) + ".png", binary);
+                //推理产物走分类器的 diagnose（与 classify 同一套算法），此处额外把完整分布打出来
+                const auto_aim::NumberClassifier::Diagnosis d = classifier->diagnose(frame, armor);
+                cv::imwrite(output_dir + "/" + stem + "_number_roi_" + std::to_string(a) + ".png", d.roi);
+                cv::imwrite(output_dir + "/" + stem + "_number_bin_" + std::to_string(a) + ".png", d.binary);
 
-                //推理 + softmax（与 classifyArmors 同一套算法，此处额外把完整分布打出来）
-                cv::Mat blob;
-                cv::dnn::blobFromImage(binary, blob, 1.0 / 255.0);
-                classifier.net.setInput(blob);
-                cv::Mat logits = classifier.net.forward();
-                double max_logit = 0.0;
-                cv::minMaxLoc(logits, nullptr, &max_logit);
-                cv::Mat prob;
-                cv::exp(logits - max_logit, prob);
-                prob /= cv::sum(prob)[0];
-                double confidence = 0.0;
-                cv::Point class_point;
-                cv::minMaxLoc(prob.reshape(1, 1), nullptr, &confidence, nullptr, &class_point);
-                const std::string number = classifier.labels[class_point.x];
+                const double confidence = d.confidence;
+                const std::string number = classifier->labels()[d.class_index];
 
                 //按 classifyArmors 的四条规则判去留，并给出被拒原因
                 std::string status;
@@ -250,11 +212,11 @@ int main(int argc, char** argv)
                           << " pred=" << number
                           << " conf=" << std::fixed << std::setprecision(3) << confidence
                           << " " << status << "  softmax[";
-                for (int c = 0; c < prob.cols; ++c)
+                for (std::size_t c = 0; c < d.probs.size(); ++c)
                 {
-                    std::cout << classifier.labels[c] << ":"
-                              << std::fixed << std::setprecision(3) << prob.at<float>(0, c);
-                    if (c + 1 < prob.cols)
+                    std::cout << classifier->labels()[c] << ":"
+                              << std::fixed << std::setprecision(3) << d.probs[c];
+                    if (c + 1 < d.probs.size())
                     {
                         std::cout << ' ';
                     }
@@ -290,8 +252,8 @@ int main(int argc, char** argv)
 
         //pnp：分类过滤后再解算位姿，逐个位姿画装甲四边形并标注 rvec/tvec，记下首个距离用于打印
         const std::vector<auto_aim::Armor> classified =
-            auto_aim::classifyArmors(frame, armors, classifier, number_params);
-        const std::vector<auto_aim::ArmorPose> poses = auto_aim::solvePnp(classified, calibration, pnp_params);
+            classifier->classify(frame, armors);
+        const std::vector<auto_aim::ArmorPose> poses = pnp_solver->solve(classified);
 
         cv::Mat vis = frame.clone();
         double first_distance = 0.0;

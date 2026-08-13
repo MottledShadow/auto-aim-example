@@ -5,6 +5,7 @@
 #include <exception>
 #include <iomanip>
 #include <iostream>
+#include <optional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -38,8 +39,12 @@ struct FrameResult
 
 int run(const std::string& stage)
 {
-    //只有 pnp 阶段需要相机标定，失败只告警不退出（solvePnp 会返回空位姿，窗口只画不出位姿）
+    //检测器无状态，参数走头文件默认值；要改测灰度或红色改 detector.hpp
+    auto_aim::Detector detector;
+
+    //只有 pnp 阶段需要相机标定与解算器，标定失败只告警不退出（solve 会返回空位姿，窗口只画不出位姿）
     auto_aim::CameraCalibration calibration;
+    std::optional<auto_aim::PnpSolver> pnp_solver;
     if (stage == "pnp")
     {
         calibration = auto_aim::loadCalibration();
@@ -47,17 +52,17 @@ int run(const std::string& stage)
         {
             std::cerr << "calibration load failed: " << calibration.error << '\n';
         }
+        pnp_solver.emplace(calibration);
     }
 
-    //number/pnp 阶段需要数字分类器，加载一次（网络有状态、开销大），失败只告警
-    auto_aim::NumberClassifierParams number_params;
-    auto_aim::NumberClassifier classifier;
+    //number/pnp 阶段需要数字分类器，构造时加载一次（网络有状态、开销大），失败只告警
+    std::optional<auto_aim::NumberClassifier> classifier;
     if (stage == "number" || stage == "pnp")
     {
-        classifier = auto_aim::loadClassifier(number_params);
-        if (!classifier.error.empty())
+        classifier.emplace();
+        if (!classifier->error().empty())
         {
-            std::cerr << "classifier load failed: " << classifier.error << '\n';
+            std::cerr << "classifier load failed: " << classifier->error() << '\n';
         }
     }
 
@@ -106,56 +111,50 @@ int run(const std::string& stage)
         cv::Mat frame;
         while (slotRaw.wait(consumed, frame))
         {
-            //各阶段参数都走头文件默认值，要改测灰度或红色改 detector.hpp
-            auto_aim::PreprocessParams pre_params;
-            auto_aim::LightBarFilterParams filter_params;
-            auto_aim::LightBarMatcherParams matcher_params;
-            auto_aim::PnpSolverParams pnp_params;
-
             FrameResult output;
             output.frame = frame;
 
             if (stage == "preprocess")
             {
                 //灰度二值化跑一次，供显示线程展示二值图
-                output.processed = auto_aim::preprocess(frame, pre_params);
+                output.processed = detector.preprocess(frame);
             }
             else if (stage == "lightbar")
             {
                 //只跑到筛选，候选留给显示线程逐项标注，通过灯条数用于自检
-                output.processed = auto_aim::preprocess(frame, pre_params);
+                output.processed = detector.preprocess(frame);
                 const std::vector<auto_aim::LightBar> bars =
-                    auto_aim::filterLightBars(frame, output.processed, filter_params);
+                    detector.filterLightBars(frame, output.processed);
                 output.count = bars.size();
             }
             else if (stage == "armor")
             {
                 //跑到配对，灯条留给显示线程重算配对指标画框
-                const auto_aim::PreprocessResult processed = auto_aim::preprocess(frame, pre_params);
-                output.bars = auto_aim::filterLightBars(frame, processed, filter_params);
-                const std::vector<auto_aim::Armor> armors = auto_aim::matchArmors(output.bars, matcher_params);
+                const auto_aim::PreprocessResult processed = detector.preprocess(frame);
+                output.bars = detector.filterLightBars(frame, processed);
+                const std::vector<auto_aim::Armor> armors = detector.matchArmors(output.bars);
                 output.count = armors.size();
             }
             else if (stage == "number")
             {
                 //跑到数字分类，保留装甲板留给显示线程画框标注数字
-                const auto_aim::PreprocessResult processed = auto_aim::preprocess(frame, pre_params);
+                const auto_aim::PreprocessResult processed = detector.preprocess(frame);
                 const std::vector<auto_aim::LightBar> bars =
-                    auto_aim::filterLightBars(frame, processed, filter_params);
-                const std::vector<auto_aim::Armor> armors = auto_aim::matchArmors(bars, matcher_params);
-                output.classified = auto_aim::classifyArmors(frame, armors, classifier, number_params);
+                    detector.filterLightBars(frame, processed);
+                const std::vector<auto_aim::Armor> armors = detector.matchArmors(bars);
+                output.classified = classifier->classify(frame, armors);
                 output.count = output.classified.size();
             }
             else
             {
                 //pnp：先分类过滤再解算位姿，位姿留给显示线程画框标注
-                const auto_aim::PreprocessResult processed = auto_aim::preprocess(frame, pre_params);
+                const auto_aim::PreprocessResult processed = detector.preprocess(frame);
                 const std::vector<auto_aim::LightBar> bars =
-                    auto_aim::filterLightBars(frame, processed, filter_params);
-                const std::vector<auto_aim::Armor> armors = auto_aim::matchArmors(bars, matcher_params);
+                    detector.filterLightBars(frame, processed);
+                const std::vector<auto_aim::Armor> armors = detector.matchArmors(bars);
                 const std::vector<auto_aim::Armor> classified =
-                    auto_aim::classifyArmors(frame, armors, classifier, number_params);
-                output.poses = auto_aim::solvePnp(classified, calibration, pnp_params);
+                    classifier->classify(frame, armors);
+                output.poses = pnp_solver->solve(classified);
                 output.count = classified.size();
             }
 
@@ -193,9 +192,7 @@ int run(const std::string& stage)
         std::cout << "一个窗口：画装甲框并标注每块装甲的 rvec/tvec；q/ESC 退出\n";
     }
 
-    //筛选/配对参数默认值，主线程重算指标画框时用（与处理线程用的默认值一致）
-    const auto_aim::LightBarFilterParams filter_params;
-    const auto_aim::LightBarMatcherParams matcher_params;
+    //主线程重算指标画框时直接用检测器持有的同一套参数
     std::uint64_t consumed = 0;
     FrameResult result_frame;
     //帧率打印基准：每秒用增量算一次 FPS
@@ -219,7 +216,7 @@ int run(const std::string& stage)
         {
             //遍历全部候选，按 filterLightBars 的公式重算四项指标并逐项着色
             vis = result_frame.frame.clone();
-            auto_aim::drawLightBarMetrics(vis, result_frame.processed.candidates, filter_params);
+            auto_aim::drawLightBarMetrics(vis, result_frame.processed.candidates, detector.filter_params);
             cv::putText(vis, "lightbar filter (default params)  passed=" + std::to_string(result_frame.count),
                         cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(0, 255, 0), 2);
             fps_suffix = " passed=" + std::to_string(result_frame.count);
@@ -228,7 +225,7 @@ int run(const std::string& stage)
         {
             //遍历全部同色灯条对，按 matchArmors 的公式重算配对指标并画框+逐项着色
             vis = result_frame.frame.clone();
-            const std::size_t draw_passed = auto_aim::drawArmorMetrics(vis, result_frame.bars, matcher_params);
+            const std::size_t draw_passed = auto_aim::drawArmorMetrics(vis, result_frame.bars, detector.matcher_params);
             cv::putText(vis, "armor match (default params)  matched=" + std::to_string(result_frame.count)
                             + " draw_passed=" + std::to_string(draw_passed),
                         cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(0, 255, 0), 2);

@@ -57,15 +57,17 @@ CameraCalibration loadCalibration(const std::string& path)
     return calibration;
 }
 
-std::vector<ArmorPose> solvePnp(
-    const std::vector<Armor>& armors,
-    const CameraCalibration& calibration,
-    const PnpSolverParams& params)
+PnpSolver::PnpSolver(const CameraCalibration& calibration, const PnpSolverParams& params)
+    : calibration_(calibration), params_(params)
+{
+}
+
+std::vector<ArmorPose> PnpSolver::solve(const std::vector<Armor>& armors) const
 {
     std::vector<ArmorPose> poses;
 
     //没有可用内参（标定失败或未加载）就返回空结果
-    if (calibration.camera_matrix.empty())
+    if (calibration_.camera_matrix.empty())
     {
         return poses;
     }
@@ -82,8 +84,8 @@ std::vector<ArmorPose> solvePnp(
 
         //3D 物体点：按大小装甲取物理尺寸(mm)，同样按左上→右上→右下→左下排列
         const bool is_large = armor.type == ArmorType::Large;
-        const float half_width = static_cast<float>((is_large ? params.large_armor_width : params.small_armor_width) * 0.5);
-        const float half_height = static_cast<float>((is_large ? params.large_armor_height : params.small_armor_height) * 0.5);
+        const float half_width = static_cast<float>((is_large ? params_.large_armor_width : params_.small_armor_width) * 0.5);
+        const float half_height = static_cast<float>((is_large ? params_.large_armor_height : params_.small_armor_height) * 0.5);
         const std::vector<cv::Point3f> object_points = {
             {-half_width, -half_height, 0.0F},
             { half_width, -half_height, 0.0F},
@@ -97,12 +99,12 @@ std::vector<ArmorPose> solvePnp(
         const bool solved = cv::solvePnP(
             object_points,
             image_points,
-            calibration.camera_matrix,
-            calibration.dist_coeffs,
+            calibration_.camera_matrix,
+            calibration_.dist_coeffs,
             rvec,
             tvec,
             false,
-            params.solve_pnp_method);
+            params_.solve_pnp_method);
         if (!solved)
         {
             continue;

@@ -15,7 +15,7 @@ enum class LightColor
     Blue,
 };
 
-// ========== 调参结构体（置顶，方便调参）==========
+// ========== 调参结构体 ==========
 
 struct PreprocessParams
 {
@@ -88,18 +88,24 @@ struct Armor
     float confidence = 0.0F;     // 分类 softmax 最大概率
 };
 
-// ========== 函数接口 ==========
+// ========== 检测器 ==========
 
-PreprocessResult preprocess(const cv::Mat& frame, const PreprocessParams& params = {});
+// 无状态的检测器：把三个参数结构体收成公开成员，三个阶段各一方法
+class Detector
+{
+public:
+    PreprocessParams preprocess_params;
+    LightBarFilterParams filter_params;
+    LightBarMatcherParams matcher_params;
 
-std::vector<LightBar> filterLightBars(
-    const cv::Mat& frame,
-    const PreprocessResult& preprocess,
-    const LightBarFilterParams& params = {});
+    PreprocessResult preprocess(const cv::Mat& frame) const;
 
-std::vector<Armor> matchArmors(
-    const std::vector<LightBar>& light_bars,
-    const LightBarMatcherParams& params = {});
+    std::vector<LightBar> filterLightBars(
+        const cv::Mat& frame,
+        const PreprocessResult& pre) const;
+
+    std::vector<Armor> matchArmors(const std::vector<LightBar>& light_bars) const;
+};
 
 } // namespace auto_aim
 

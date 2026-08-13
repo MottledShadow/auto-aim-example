@@ -8,7 +8,7 @@
 namespace auto_aim
 {
 
-PreprocessResult preprocess(const cv::Mat& frame, const PreprocessParams& params)
+PreprocessResult Detector::preprocess(const cv::Mat& frame) const
 {
     PreprocessResult result;
 
@@ -18,7 +18,7 @@ PreprocessResult preprocess(const cv::Mat& frame, const PreprocessParams& params
     cv::threshold(
         gray,
         result.binary,
-        params.binary_threshold,
+        preprocess_params.binary_threshold,
         255,
         cv::THRESH_BINARY);
 
@@ -53,15 +53,14 @@ PreprocessResult preprocess(const cv::Mat& frame, const PreprocessParams& params
 
 constexpr double kEpsilon = 1e-6;
 
-std::vector<LightBar> filterLightBars(
+std::vector<LightBar> Detector::filterLightBars(
     const cv::Mat& frame,
-    const PreprocessResult& preprocess,
-    const LightBarFilterParams& params)
+    const PreprocessResult& pre) const
 {
     std::vector<LightBar> result;
-    result.reserve(preprocess.candidates.size());
+    result.reserve(pre.candidates.size());
 
-    for (const ContourCandidate& geom : preprocess.candidates)
+    for (const ContourCandidate& geom : pre.candidates)
     {
         const cv::RotatedRect& rect = geom.rect;
         const double area = geom.area;
@@ -98,10 +97,10 @@ std::vector<LightBar> filterLightBars(
         const double fill_ratio = std::clamp(area / rect_area, 0.0, 1.0);
 
         //面积、长宽比、角度、填充比逐项范围筛选，任一超范围就跳过
-        if (area < params.min_area || area > params.max_area ||
-            aspect_ratio < params.min_aspect_ratio || aspect_ratio > params.max_aspect_ratio ||
-            line_angle_deg < params.min_line_angle_deg || line_angle_deg > params.max_line_angle_deg ||
-            fill_ratio < params.min_fill_ratio || fill_ratio > params.max_fill_ratio)
+        if (area < filter_params.min_area || area > filter_params.max_area ||
+            aspect_ratio < filter_params.min_aspect_ratio || aspect_ratio > filter_params.max_aspect_ratio ||
+            line_angle_deg < filter_params.min_line_angle_deg || line_angle_deg > filter_params.max_line_angle_deg ||
+            fill_ratio < filter_params.min_fill_ratio || fill_ratio > filter_params.max_fill_ratio)
         {
             continue;
         }
@@ -121,7 +120,7 @@ std::vector<LightBar> filterLightBars(
         }
 
         //颜色不是目标灯条颜色的直接舍弃
-        if (color != params.target_color)
+        if (color != filter_params.target_color)
         {
             continue;
         }
@@ -161,9 +160,7 @@ std::vector<LightBar> filterLightBars(
     return result;
 }
 
-std::vector<Armor> matchArmors(
-    const std::vector<LightBar>& light_bars,
-    const LightBarMatcherParams& params)
+std::vector<Armor> Detector::matchArmors(const std::vector<LightBar>& light_bars) const
 {
     std::vector<Armor> result;
 
@@ -205,11 +202,11 @@ std::vector<Armor> matchArmors(
                 average_height;
 
             //五项几何判据逐一范围筛选，任一超范围就跳过
-            if (length_ratio > params.max_light_length_ratio ||
-                angle_diff > params.max_light_angle_diff_deg ||
-                center_y_diff > params.max_light_center_y_diff ||
-                center_distance_ratio < params.min_center_distance_ratio ||
-                center_distance_ratio > params.max_center_distance_ratio)
+            if (length_ratio > matcher_params.max_light_length_ratio ||
+                angle_diff > matcher_params.max_light_angle_diff_deg ||
+                center_y_diff > matcher_params.max_light_center_y_diff ||
+                center_distance_ratio < matcher_params.min_center_distance_ratio ||
+                center_distance_ratio > matcher_params.max_center_distance_ratio)
             {
                 continue;
             }
@@ -243,7 +240,7 @@ std::vector<Armor> matchArmors(
             }
 
             //大小分类：中心距比 ≥ 阈值判大装甲，否则小装甲
-            const ArmorType type = (center_distance_ratio >= params.large_armor_min_center_distance_ratio)
+            const ArmorType type = (center_distance_ratio >= matcher_params.large_armor_min_center_distance_ratio)
                 ? ArmorType::Large
                 : ArmorType::Small;
 

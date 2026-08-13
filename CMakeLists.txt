@@ -116,7 +116,7 @@ set_target_properties(calibrate_camera
 add_executable(pipeline_offline_test
     tests/pipeline_offline_test.cpp
     detector/detector.cpp
-    detector/detector_pnp.cpp
+    detector/pnp.cpp
     detector/classifier.cpp
     debug_draw/debug_draw.cpp
 )
@@ -144,7 +144,7 @@ add_executable(pipeline_online_test
     tests/pipeline_online_test.cpp
     hik_camera/hik_camera.cpp
     detector/detector.cpp
-    detector/detector_pnp.cpp
+    detector/pnp.cpp
     detector/classifier.cpp
     debug_draw/debug_draw.cpp
 )

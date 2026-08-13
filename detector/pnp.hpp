@@ -39,9 +39,17 @@ struct ArmorPose
 
 CameraCalibration loadCalibration(const std::string& path = "config/camera_calibration.yml");
 
-std::vector<ArmorPose> solvePnp(
-    const std::vector<Armor>& armors,
-    const CameraCalibration& calibration,
-    const PnpSolverParams& params = {});
+// PnP 位姿解算器：构造时持有标定与参数，之后每帧对配对装甲板 solve
+class PnpSolver
+{
+public:
+    explicit PnpSolver(const CameraCalibration& calibration, const PnpSolverParams& params = {});
+
+    std::vector<ArmorPose> solve(const std::vector<Armor>& armors) const;
+
+private:
+    CameraCalibration calibration_;
+    PnpSolverParams params_;
+};
 
 } // namespace auto_aim
