@@ -1,3 +1,4 @@
+
 # detector 识别模块
 
 RM 装甲板识别：一帧 `cv::Mat` 进，识别出的装甲板（含数字与相机系位姿）出。编成静态库 `detector`，下游链接它即可（`inc/` 经 CMake PUBLIC 暴露）。
