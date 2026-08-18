@@ -34,6 +34,9 @@ endif()
 # detector 识别模块（静态库），头文件路径经 PUBLIC 传递给下游 target
 add_subdirectory(detector)
 
+# tracker 追踪模块（静态库）：相机系装甲板 → 世界系精简装甲板，依赖 detector
+add_subdirectory(tracker)
+
 add_executable(hik_camera_test
     tests/hik_camera_test.cpp
     hik_camera/hik_camera.cpp
