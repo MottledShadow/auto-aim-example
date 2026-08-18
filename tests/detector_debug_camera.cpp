@@ -32,18 +32,18 @@ struct NumberAnno
     bool keep = false;
 };
 
-//取帧线程发布给处理线程的载荷：原图 + 秒制帧时间戳
+//取帧线程发布给处理线程的载荷：原图 + 硬件帧时间戳
 struct RawFrame
 {
     cv::Mat image;
-    double timestamp = 0.0;   // 单位秒
+    std::uint64_t hardwareTimestamp = 0;   // 设备 tick
 };
 
 //处理线程每帧跑完整流水线，把原图 + 所有中间产物一并塞进来交给显示线程逐层叠画
 struct FrameResult
 {
     cv::Mat frame;
-    double timestampSeconds = 0.0;   // 帧时间戳(秒)，从取帧线程一路带下来
+    std::uint64_t hardwareTimestamp = 0;   // 硬件时间戳(设备 tick)，从取帧线程一路带下来
     //preprocess/lightbar 用：单次预处理结果（含二值图和候选轮廓）
     auto_aim::PreprocessResult processed;
     //armor 用：筛选通过的灯条
@@ -110,8 +110,8 @@ int run()
                           << std::hex << static_cast<unsigned int>(captureResult) << '\n';
                 break;
             }
-            //连同秒制时间戳一起发布（主机时间戳 ms → 秒）
-            slotRaw.publish({frame.image.clone(), frame.hostTimestamp / 1000.0});
+            //连同硬件时间戳(设备 tick)一起发布
+            slotRaw.publish({frame.image.clone(), frame.hardwareTimestamp});
             ++captureCount;
         }
         //取帧结束，通知下游别再等了
@@ -128,7 +128,7 @@ int run()
             const cv::Mat& frame = raw.image;
             FrameResult output;
             output.frame = frame;
-            output.timestampSeconds = raw.timestamp;
+            output.hardwareTimestamp = raw.hardwareTimestamp;
 
             //几何三阶段：预处理 → 灯条筛选 → 装甲配对（armors 是 PnP 的输入，与分类无关）
             output.processed = detector.preprocess(frame);

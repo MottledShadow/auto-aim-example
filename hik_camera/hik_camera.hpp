@@ -22,7 +22,6 @@ struct HikCameraFrame
     cv::Mat image;
     unsigned int frameNumber = 0;
     std::uint64_t hardwareTimestamp = 0;
-    std::int64_t hostTimestamp = 0;   // 主机时间戳, ms
     int pixelType = 0;
 };
 

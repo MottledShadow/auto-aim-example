@@ -191,7 +191,6 @@ int HikCamera::grabFrame(HikCameraFrame& frame, unsigned int timeoutMs)
         frame.hardwareTimestamp =
             (static_cast<std::uint64_t>(info.nDevTimeStampHigh) << 32U) |
             static_cast<std::uint64_t>(info.nDevTimeStampLow);
-        frame.hostTimestamp = info.nHostTimeStamp;
         frame.pixelType = static_cast<int>(info.enPixelType);
     }
     else

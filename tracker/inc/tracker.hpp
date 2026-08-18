@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -48,24 +49,26 @@ public:
     explicit Tracker(const CameraToWorldParams& params = {});
 
     // 追踪主流程：坐标变换 → 首帧初始化 / 后续帧预测
-    // timestamp 为秒制帧时间戳，两帧之差即预测用的 dt；来源换算由调用方负责
+    // timestamp 为硬件时间戳(设备 tick)，两帧之差经 tickToSecond 换算即预测用的 dt
     std::vector<TrackedArmor> track(const std::vector<Armor>& armors,
                                     const cv::Vec4d& quaternion,
-                                    double timestamp);
+                                    std::uint64_t timestamp);
 
     bool initialized() const { return initialized_; }
     const TargetState& state() const { return state_; }
 
+    double tickToSecond = 1.0;   // 设备 tick → 秒 换算系数；未标定默认 1.0，标定后只改这里
+
 private:
     // 相机系装甲板 → 世界系精简装甲板：每帧 IMU 四元数(机体→世界) + 固定光学系重映射
-    // tvec→世界系位置，rvec(经 Rodrigues)→世界系朝向四元数，携带 type/number。纯坐标变换，无状态
-    std::vector<TrackedArmor> toWorld(const std::vector<Armor>& armors, const cv::Vec4d& quaternion) const;
+    // tvec→世界系位置，rvec(经 Rodrigues)→世界系朝向四元数，携带 type/number。读 armors_/quaternion_，写 tracked_
+    void toWorld();
 
-    // 用第一帧世界系装甲板初始化整车状态：z 取自坐标、yaw 由四元数、中心由 yaw+xy+r 推出、速度置零
-    void initStateFromArmor(const TrackedArmor& armor);
+    // 用第一帧世界系装甲板(tracked_.front())初始化整车状态：z 取自坐标、yaw 由四元数、中心由 yaw+xy+r 推出、速度置零
+    void initStateFromArmor();
 
-    // 匀速模型预测：位置/高度/角度按 当前值 + 速度 × dt 推进
-    void predict(double dt);
+    // 匀速模型预测：位置/高度/角度按 当前值 + 速度 × dt 推进（dt 由成员时间戳算）
+    void predict();
 
     // 世界系朝向四元数(w,x,y,z) → 绕 z 轴 yaw 角(rad)
     static double orientationToYaw(const cv::Vec4d& quaternion);
@@ -73,7 +76,12 @@ private:
     CameraToWorldParams params_;
     TargetState state_;
     bool initialized_ = false;
-    double lastTimestamp_ = 0.0;   // 上一帧时间戳(秒)，用于算 dt
+
+    std::vector<Armor> armors_;          // 本帧相机系装甲板(输入)
+    cv::Vec4d quaternion_{1, 0, 0, 0};   // 本帧 IMU 四元数(输入)
+    std::uint64_t timestamp_ = 0;        // 本帧硬件时间戳(tick, 输入)
+    std::vector<TrackedArmor> tracked_;  // 本帧世界系装甲板(toWorld 输出/返回值)
+    std::uint64_t lastTimestamp_ = 0;    // 上一帧硬件时间戳(tick)，用于算 dt
 };
 
 } // namespace auto_aim

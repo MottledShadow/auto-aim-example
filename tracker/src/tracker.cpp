@@ -14,37 +14,42 @@ Tracker::Tracker(const CameraToWorldParams& params)
 
 std::vector<TrackedArmor> Tracker::track(const std::vector<Armor>& armors,
                                          const cv::Vec4d& quaternion,
-                                         double timestamp)
+                                         std::uint64_t timestamp)
 {
-    std::vector<TrackedArmor> tracked = toWorld(armors, quaternion);
+    //本帧输入存进对象，后续各步直接读成员，不再层层传参
+    armors_ = armors;
+    quaternion_ = quaternion;
+    timestamp_ = timestamp;
+
+    toWorld();   //填 tracked_
 
     if (!initialized_)
     {
         //第一帧：用观测初始化状态并记下时间基准
-        if (!tracked.empty())
+        if (!tracked_.empty())
         {
-            initStateFromArmor(tracked.front());
-            lastTimestamp_ = timestamp;
+            initStateFromArmor();
+            lastTimestamp_ = timestamp_;
             initialized_ = true;
         }
     }
     else
     {
         //后续帧：按两帧间隔做预测，时间基准滚动更新
-        predict(timestamp - lastTimestamp_);
-        lastTimestamp_ = timestamp;
+        predict();
+        lastTimestamp_ = timestamp_;
     }
 
-    return tracked;
+    return tracked_;
 }
 
-std::vector<TrackedArmor> Tracker::toWorld(const std::vector<Armor>& armors, const cv::Vec4d& quaternion) const
+void Tracker::toWorld()
 {
     //从 IMU 四元数取四个分量，顺序按 (w, x, y, z)；若电控发 (x, y, z, w) 改这里的下标
-    const double w = quaternion[0];
-    const double x = quaternion[1];
-    const double y = quaternion[2];
-    const double z = quaternion[3];
+    const double w = quaternion_[0];
+    const double x = quaternion_[1];
+    const double y = quaternion_[2];
+    const double z = quaternion_[3];
 
     //用四元数标准公式构建 3x3 旋转矩阵 R_imu（机体系→世界系的姿态）
     cv::Mat rImu = (cv::Mat_<double>(3, 3) <<
@@ -62,8 +67,8 @@ std::vector<TrackedArmor> Tracker::toWorld(const std::vector<Armor>& armors, con
     //相机系→世界系整体旋转：先光学系→机体系，再机体系→世界系
     cv::Mat rCam2World = rImu * rCam2Body;
 
-    std::vector<TrackedArmor> tracked;
-    for (const Armor& armor : armors)
+    tracked_.clear();
+    for (const Armor& armor : armors_)
     {
         TrackedArmor out;
         out.type = armor.type;
@@ -115,15 +120,15 @@ std::vector<TrackedArmor> Tracker::toWorld(const std::vector<Armor>& armors, con
         }
         out.orientation = cv::Vec4d(qw, qx, qy, qz);
 
-        tracked.push_back(out);
+        tracked_.push_back(out);
     }
-
-    return tracked;
 }
 
-void Tracker::predict(double dt)
+void Tracker::predict()
 {
-    //匀速模型：位置/高度/角度都是当前值加速度乘时间；速度与半径本步保持不变
+    //dt = 两帧硬件时间戳之差(设备 tick) × tickToSecond；tickToSecond 未标定时默认 1.0，
+    //定标设备 tick 频率后只改该系数即得真实秒。当前速度均为 0、predict 不产生位移
+    const double dt = static_cast<double>(timestamp_ - lastTimestamp_) * tickToSecond;
     state_.xc  += state_.vxc  * dt;
     state_.yc  += state_.vyc  * dt;
     state_.z   += state_.vz   * dt;
@@ -140,8 +145,9 @@ double Tracker::orientationToYaw(const cv::Vec4d& q)
     return std::atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z));
 }
 
-void Tracker::initStateFromArmor(const TrackedArmor& armor)
+void Tracker::initStateFromArmor()
 {
+    const TrackedArmor& armor = tracked_.front();
     //装甲板角度由世界系朝向四元数得到
     const double yaw = orientationToYaw(armor.orientation);
     //装甲板高度直接取世界系坐标 z
