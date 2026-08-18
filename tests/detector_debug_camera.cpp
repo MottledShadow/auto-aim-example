@@ -32,10 +32,18 @@ struct NumberAnno
     bool keep = false;
 };
 
+//取帧线程发布给处理线程的载荷：原图 + 秒制帧时间戳
+struct RawFrame
+{
+    cv::Mat image;
+    double timestamp = 0.0;   // 单位秒
+};
+
 //处理线程每帧跑完整流水线，把原图 + 所有中间产物一并塞进来交给显示线程逐层叠画
 struct FrameResult
 {
     cv::Mat frame;
+    double timestampSeconds = 0.0;   // 帧时间戳(秒)，从取帧线程一路带下来
     //preprocess/lightbar 用：单次预处理结果（含二值图和候选轮廓）
     auto_aim::PreprocessResult processed;
     //armor 用：筛选通过的灯条
@@ -82,7 +90,7 @@ int run()
     }
 
     //两级流水线各一个最新帧槽：相机原图 → 处理产出（原图+全部中间产物，绘图留给显示线程）
-    auto_aim::LatestSlot<cv::Mat> slotRaw;
+    auto_aim::LatestSlot<RawFrame> slotRaw;
     auto_aim::LatestSlot<FrameResult> slotVis;
 
     //帧率计数：取帧线程累加 captureCount，处理线程累加 detectCount，显示线程按秒读差值
@@ -102,7 +110,8 @@ int run()
                           << std::hex << static_cast<unsigned int>(captureResult) << '\n';
                 break;
             }
-            slotRaw.publish(frame.image.clone());
+            //连同秒制时间戳一起发布（主机时间戳 ms → 秒）
+            slotRaw.publish({frame.image.clone(), frame.hostTimestamp / 1000.0});
             ++captureCount;
         }
         //取帧结束，通知下游别再等了
@@ -113,11 +122,13 @@ int run()
     std::thread processThread([&]
     {
         std::uint64_t consumed = 0;
-        cv::Mat frame;
-        while (slotRaw.wait(consumed, frame))
+        RawFrame raw;
+        while (slotRaw.wait(consumed, raw))
         {
+            const cv::Mat& frame = raw.image;
             FrameResult output;
             output.frame = frame;
+            output.timestampSeconds = raw.timestamp;
 
             //几何三阶段：预处理 → 灯条筛选 → 装甲配对（armors 是 PnP 的输入，与分类无关）
             output.processed = detector.preprocess(frame);

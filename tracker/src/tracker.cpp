@@ -12,7 +12,33 @@ Tracker::Tracker(const CameraToWorldParams& params)
 {
 }
 
-std::vector<TrackedArmor> Tracker::track(const std::vector<Armor>& armors, const cv::Vec4d& quaternion)
+std::vector<TrackedArmor> Tracker::track(const std::vector<Armor>& armors,
+                                         const cv::Vec4d& quaternion,
+                                         double timestamp)
+{
+    std::vector<TrackedArmor> tracked = toWorld(armors, quaternion);
+
+    if (!initialized_)
+    {
+        //第一帧：用观测初始化状态并记下时间基准
+        if (!tracked.empty())
+        {
+            initStateFromArmor(tracked.front());
+            lastTimestamp_ = timestamp;
+            initialized_ = true;
+        }
+    }
+    else
+    {
+        //后续帧：按两帧间隔做预测，时间基准滚动更新
+        predict(timestamp - lastTimestamp_);
+        lastTimestamp_ = timestamp;
+    }
+
+    return tracked;
+}
+
+std::vector<TrackedArmor> Tracker::toWorld(const std::vector<Armor>& armors, const cv::Vec4d& quaternion) const
 {
     //从 IMU 四元数取四个分量，顺序按 (w, x, y, z)；若电控发 (x, y, z, w) 改这里的下标
     const double w = quaternion[0];
@@ -92,14 +118,16 @@ std::vector<TrackedArmor> Tracker::track(const std::vector<Armor>& armors, const
         tracked.push_back(out);
     }
 
-    //第一帧拿到装甲板时初始化整车状态；后续帧的预测/更新留待后续实现
-    if (!initialized_ && !tracked.empty())
-    {
-        initStateFromArmor(tracked.front());
-        initialized_ = true;
-    }
-
     return tracked;
+}
+
+void Tracker::predict(double dt)
+{
+    //匀速模型：位置/高度/角度都是当前值加速度乘时间；速度与半径本步保持不变
+    state_.xc  += state_.vxc  * dt;
+    state_.yc  += state_.vyc  * dt;
+    state_.z   += state_.vz   * dt;
+    state_.yaw += state_.vYaw * dt;
 }
 
 double Tracker::orientationToYaw(const cv::Vec4d& q)

@@ -47,17 +47,25 @@ class Tracker
 public:
     explicit Tracker(const CameraToWorldParams& params = {});
 
-    // 相机系装甲板 → 世界系精简装甲板：每帧 IMU 四元数(机体→世界) + 固定光学系重映射
-    // tvec→世界系位置，rvec(经 Rodrigues)→世界系朝向四元数，携带 type/number
-    // 非 const：第一帧输入装甲板时会初始化整车状态
-    std::vector<TrackedArmor> track(const std::vector<Armor>& armors, const cv::Vec4d& quaternion);
+    // 追踪主流程：坐标变换 → 首帧初始化 / 后续帧预测
+    // timestamp 为秒制帧时间戳，两帧之差即预测用的 dt；来源换算由调用方负责
+    std::vector<TrackedArmor> track(const std::vector<Armor>& armors,
+                                    const cv::Vec4d& quaternion,
+                                    double timestamp);
 
     bool initialized() const { return initialized_; }
     const TargetState& state() const { return state_; }
 
 private:
+    // 相机系装甲板 → 世界系精简装甲板：每帧 IMU 四元数(机体→世界) + 固定光学系重映射
+    // tvec→世界系位置，rvec(经 Rodrigues)→世界系朝向四元数，携带 type/number。纯坐标变换，无状态
+    std::vector<TrackedArmor> toWorld(const std::vector<Armor>& armors, const cv::Vec4d& quaternion) const;
+
     // 用第一帧世界系装甲板初始化整车状态：z 取自坐标、yaw 由四元数、中心由 yaw+xy+r 推出、速度置零
     void initStateFromArmor(const TrackedArmor& armor);
+
+    // 匀速模型预测：位置/高度/角度按 当前值 + 速度 × dt 推进
+    void predict(double dt);
 
     // 世界系朝向四元数(w,x,y,z) → 绕 z 轴 yaw 角(rad)
     static double orientationToYaw(const cv::Vec4d& quaternion);
@@ -65,6 +73,7 @@ private:
     CameraToWorldParams params_;
     TargetState state_;
     bool initialized_ = false;
+    double lastTimestamp_ = 0.0;   // 上一帧时间戳(秒)，用于算 dt
 };
 
 } // namespace auto_aim
