@@ -49,10 +49,9 @@ public:
     explicit Tracker(const CameraToWorldParams& params = {});
 
     // 追踪主流程：坐标变换 → 首帧初始化 / 后续帧预测
-    // timestamp 为硬件时间戳(设备 tick)，两帧之差经 tickToSecond 换算即预测用的 dt
-    std::vector<TrackedArmor> track(const std::vector<Armor>& armors,
-                                    const cv::Vec4d& quaternion,
-                                    std::uint64_t timestamp);
+    // 入参 DetectionResult 带相机系装甲板 + 时间戳(设备 tick) + IMU 四元数；
+    // 两帧时间戳之差经 tickToSecond 换算即预测用的 dt
+    std::vector<TrackedArmor> track(const DetectionResult& detection);
 
     bool initialized() const { return initialized_; }
     const TargetState& state() const { return state_; }

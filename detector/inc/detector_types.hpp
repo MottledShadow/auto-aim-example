@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -48,6 +49,22 @@ struct Armor
     float confidence = 0.0F;     // 分类 softmax 最大概率
     cv::Mat rvec;                // PnP 解出的旋转向量（相机系，3x1 CV_64F），未解算时为空
     cv::Mat tvec;                // PnP 解出的平移向量（相机系，mm，3x1 CV_64F），未解算时为空
+};
+
+// 相机取帧 → 识别器：一帧原图 + 取帧时刻同步采集的时间戳/IMU 姿态，随帧一路透传到追踪器
+struct FrameInput
+{
+    cv::Mat image;                       // BGR 原图
+    std::uint64_t timestamp = 0;         // 硬件时间戳(设备 tick)，来自 HikCameraFrame::hardwareTimestamp
+    cv::Vec4d quaternion{1, 0, 0, 0};    // 取帧时刻 IMU 四元数 (w,x,y,z)，IMU 未接入前为单位四元数
+};
+
+// 识别器 → 追踪器：本帧相机系装甲板(自带 rvec/tvec) + 从取帧透传来的时间戳/IMU 姿态
+struct DetectionResult
+{
+    std::vector<Armor> armors;           // 识别流水线输出，相机系位姿
+    std::uint64_t timestamp = 0;         // 同 FrameInput.timestamp，透传
+    cv::Vec4d quaternion{1, 0, 0, 0};    // 同 FrameInput.quaternion，透传
 };
 
 // 预处理阶段的单个轮廓候选

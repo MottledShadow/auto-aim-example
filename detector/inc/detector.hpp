@@ -22,7 +22,8 @@ public:
     explicit Detector(const CameraCalibration& calibration);
 
     // 完整识别流水线：预处理 → 灯条筛选 → 装甲配对 → 数字分类 → PnP
-    std::vector<Armor> detect(const cv::Mat& frame);
+    // 入参 FrameInput 带图像+时间戳+IMU 四元数；返回 DetectionResult，把时间戳/四元数原样透传给追踪器
+    DetectionResult detect(const FrameInput& input);
 
     // 分类模型加载失败原因，空表示成功（模型缺失时 detect 会一直返回空）
     const std::string& error() const { return classifier_.error(); }

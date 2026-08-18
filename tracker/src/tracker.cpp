@@ -12,14 +12,12 @@ Tracker::Tracker(const CameraToWorldParams& params)
 {
 }
 
-std::vector<TrackedArmor> Tracker::track(const std::vector<Armor>& armors,
-                                         const cv::Vec4d& quaternion,
-                                         std::uint64_t timestamp)
+std::vector<TrackedArmor> Tracker::track(const DetectionResult& detection)
 {
     //本帧输入存进对象，后续各步直接读成员，不再层层传参
-    armors_ = armors;
-    quaternion_ = quaternion;
-    timestamp_ = timestamp;
+    armors_ = detection.armors;
+    quaternion_ = detection.quaternion;
+    timestamp_ = detection.timestamp;
 
     toWorld();   //填 tracked_
 

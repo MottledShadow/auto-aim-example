@@ -18,6 +18,7 @@
 #include "latest_slot.hpp"
 #include "number_classifier.hpp"
 #include "pnp_solver.hpp"
+#include "tracker.hpp"
 
 namespace
 {
@@ -32,18 +33,11 @@ struct NumberAnno
     bool keep = false;
 };
 
-//取帧线程发布给处理线程的载荷：原图 + 硬件帧时间戳
-struct RawFrame
-{
-    cv::Mat image;
-    std::uint64_t hardwareTimestamp = 0;   // 设备 tick
-};
-
 //处理线程每帧跑完整流水线，把原图 + 所有中间产物一并塞进来交给显示线程逐层叠画
 struct FrameResult
 {
     cv::Mat frame;
-    std::uint64_t hardwareTimestamp = 0;   // 硬件时间戳(设备 tick)，从取帧线程一路带下来
+    std::uint64_t timestamp = 0;   // 硬件时间戳(设备 tick)，从取帧线程一路带下来
     //preprocess/lightbar 用：单次预处理结果（含二值图和候选轮廓）
     auto_aim::PreprocessResult processed;
     //armor 用：筛选通过的灯条
@@ -52,6 +46,8 @@ struct FrameResult
     std::vector<NumberAnno> numbers;
     //pnp 用：对全部配对装甲解算出位姿的装甲板（绕开分类过滤，Armor 自带 rvec/tvec）
     std::vector<auto_aim::Armor> solved;
+    //追踪器输出：世界系精简装甲板（验证 取帧→识别→追踪 用新对象贯通）
+    std::vector<auto_aim::TrackedArmor> tracked;
     //各阶段计数，画在状态栏
     std::size_t barCount = 0;
     std::size_t armorCount = 0;
@@ -79,6 +75,9 @@ int run()
     }
     const auto_aim::PnpSolver pnpSolver(calibration);
 
+    //追踪器：接 detector 的相机系装甲板，转世界系；外参走默认占位，IMU 未接入前用单位四元数
+    auto_aim::Tracker tracker;
+
     //初始化相机（打开设备并启动内部采集线程）
     auto_aim::HikCamera camera;
     int result = camera.initialize();
@@ -90,7 +89,7 @@ int run()
     }
 
     //两级流水线各一个最新帧槽：相机原图 → 处理产出（原图+全部中间产物，绘图留给显示线程）
-    auto_aim::LatestSlot<RawFrame> slotRaw;
+    auto_aim::LatestSlot<auto_aim::FrameInput> slotRaw;
     auto_aim::LatestSlot<FrameResult> slotVis;
 
     //帧率计数：取帧线程累加 captureCount，处理线程累加 detectCount，显示线程按秒读差值
@@ -110,8 +109,11 @@ int run()
                           << std::hex << static_cast<unsigned int>(captureResult) << '\n';
                 break;
             }
-            //连同硬件时间戳(设备 tick)一起发布
-            slotRaw.publish({frame.image.clone(), frame.hardwareTimestamp});
+            //打包成取帧对象：图像 + 硬件时间戳(设备 tick)，四元数走默认单位值(IMU 未接入)
+            auto_aim::FrameInput input;
+            input.image = frame.image.clone();
+            input.timestamp = frame.hardwareTimestamp;
+            slotRaw.publish(std::move(input));
             ++captureCount;
         }
         //取帧结束，通知下游别再等了
@@ -122,13 +124,13 @@ int run()
     std::thread processThread([&]
     {
         std::uint64_t consumed = 0;
-        RawFrame raw;
+        auto_aim::FrameInput raw;
         while (slotRaw.wait(consumed, raw))
         {
             const cv::Mat& frame = raw.image;
             FrameResult output;
             output.frame = frame;
-            output.hardwareTimestamp = raw.hardwareTimestamp;
+            output.timestamp = raw.timestamp;
 
             //几何三阶段：预处理 → 灯条筛选 → 装甲配对（armors 是 PnP 的输入，与分类无关）
             output.processed = detector.preprocess(frame);
@@ -179,6 +181,10 @@ int run()
 
             //PnP 直接对全部配对装甲解算（绕开分类过滤，没贴贴纸也能看到位姿）
             output.solved = pnpSolver.solve(armors);
+
+            //把识别结果连同透传的时间戳/四元数打包，喂给追踪器转世界系（验证端到端贯通）
+            const auto_aim::DetectionResult detection{output.solved, raw.timestamp, raw.quaternion};
+            output.tracked = tracker.track(detection);
 
             slotVis.publish(std::move(output));
             ++detectCount;
@@ -305,7 +311,16 @@ int run()
                       << " bars=" << resultFrame.barCount
                       << " armors=" << resultFrame.armorCount
                       << " kept=" << resultFrame.kept
-                      << " solved=" << resultFrame.solved.size() << '\n';
+                      << " solved=" << resultFrame.solved.size()
+                      << " tracked=" << resultFrame.tracked.size();
+            //有追踪结果就打印第一块的世界系坐标，验证 取帧→识别→追踪 用新对象贯通
+            if (!resultFrame.tracked.empty())
+            {
+                const cv::Vec3d& p = resultFrame.tracked.front().position;
+                std::cout << " world=[" << std::setprecision(0)
+                          << p[0] << ' ' << p[1] << ' ' << p[2] << "]mm";
+            }
+            std::cout << '\n';
             lastPrint = now;
             lastCapture = capture;
             lastDetect = detect;
