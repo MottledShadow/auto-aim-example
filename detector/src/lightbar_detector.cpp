@@ -1,4 +1,4 @@
-#include "geometry_detector.hpp"
+#include "lightbar_detector.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -8,7 +8,7 @@
 namespace auto_aim
 {
 
-PreprocessResult GeometryDetector::preprocess(const cv::Mat& frame) const
+PreprocessResult LightbarDetector::preprocess(const cv::Mat& frame) const
 {
     PreprocessResult result;
 
@@ -18,7 +18,7 @@ PreprocessResult GeometryDetector::preprocess(const cv::Mat& frame) const
     cv::threshold(
         gray,
         result.binary,
-        preprocessParams.binaryThreshold,
+        binaryThreshold,
         255,
         cv::THRESH_BINARY);
 
@@ -53,7 +53,7 @@ PreprocessResult GeometryDetector::preprocess(const cv::Mat& frame) const
 
 constexpr double kEpsilon = 1e-6;
 
-std::vector<LightBar> GeometryDetector::filterLightBars(
+std::vector<LightBar> LightbarDetector::filterLightBars(
     const cv::Mat& frame,
     const PreprocessResult& pre) const
 {
@@ -160,7 +160,7 @@ std::vector<LightBar> GeometryDetector::filterLightBars(
     return result;
 }
 
-std::vector<Armor> GeometryDetector::matchArmors(const std::vector<LightBar>& lightBars) const
+std::vector<Armor> LightbarDetector::matchArmors(const std::vector<LightBar>& lightBars) const
 {
     std::vector<Armor> result;
 

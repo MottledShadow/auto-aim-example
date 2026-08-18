@@ -11,7 +11,7 @@
 namespace auto_aim
 {
 
-//与 geometry_detector.cpp 里 filterLightBars 一致的退化轮廓判定阈值
+//与 lightbar_detector.cpp 里 filterLightBars 一致的退化轮廓判定阈值
 constexpr double kEpsilon = 1e-6;
 
 //画框/图例的调色板：灯条层逐亮斑取一色，配对层逐装甲对取一色

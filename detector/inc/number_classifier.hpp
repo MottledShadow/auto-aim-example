@@ -5,7 +5,7 @@
 
 #include <opencv2/dnn.hpp>
 
-#include "geometry_detector.hpp"
+#include "detector_types.hpp"
 
 namespace auto_aim
 {

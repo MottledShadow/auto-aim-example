@@ -5,7 +5,7 @@
 
 #include <opencv2/core.hpp>
 
-#include "geometry_detector.hpp"
+#include "lightbar_detector.hpp"
 
 namespace auto_aim
 {

@@ -62,14 +62,14 @@ PnpSolver::PnpSolver(const CameraCalibration& calibration, const PnpSolverParams
 {
 }
 
-std::vector<ArmorPose> PnpSolver::solve(const std::vector<Armor>& armors) const
+std::vector<Armor> PnpSolver::solve(const std::vector<Armor>& armors) const
 {
-    std::vector<ArmorPose> poses;
+    std::vector<Armor> solved;
 
     //没有可用内参（标定失败或未加载）就返回空结果
     if (calibration_.cameraMatrix.empty())
     {
-        return poses;
+        return solved;
     }
 
     for (const Armor& armor : armors)
@@ -96,7 +96,7 @@ std::vector<ArmorPose> PnpSolver::solve(const std::vector<Armor>& armors) const
         //解算位姿，失败的装甲板跳过
         cv::Mat rvec;
         cv::Mat tvec;
-        const bool solved = cv::solvePnP(
+        const bool ok = cv::solvePnP(
             objectPoints,
             imagePoints,
             calibration_.cameraMatrix,
@@ -105,20 +105,19 @@ std::vector<ArmorPose> PnpSolver::solve(const std::vector<Armor>& armors) const
             tvec,
             false,
             params_.solvePnpMethod);
-        if (!solved)
+        if (!ok)
         {
             continue;
         }
 
-        //组装该装甲板的位姿结果
-        ArmorPose pose;
-        pose.armor = armor;
-        pose.rvec = rvec;
-        pose.tvec = tvec;
-        poses.push_back(pose);
+        //把位姿写回装甲板副本
+        Armor result = armor;
+        result.rvec = rvec;
+        result.tvec = tvec;
+        solved.push_back(result);
     }
 
-    return poses;
+    return solved;
 }
 
 } // namespace auto_aim

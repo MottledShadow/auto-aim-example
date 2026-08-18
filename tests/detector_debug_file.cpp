@@ -10,7 +10,7 @@
 #include <opencv2/imgproc.hpp>
 
 #include "debug_draw.hpp"
-#include "geometry_detector.hpp"
+#include "lightbar_detector.hpp"
 #include "number_classifier.hpp"
 #include "pnp_solver.hpp"
 
@@ -21,8 +21,8 @@ int main(int argc, char** argv)
     const std::string outputRoot = (argc > 2) ? argv[2] : "test_output";
     const std::string calibPath = (argc > 3) ? argv[3] : "config/camera_calibration.yml";
 
-    //几何检测器无状态，参数走头文件默认值；要改阈值直接改 geometry_detector.hpp
-    auto_aim::GeometryDetector detector;
+    //几何检测器无状态，参数走头文件默认值；要改阈值直接改 lightbar_detector.hpp
+    auto_aim::LightbarDetector detector;
 
     //数字分类器：构造时加载一次网络+标签（有状态、开销大），失败只告警
     auto_aim::NumberClassifierParams numberParams;
@@ -41,7 +41,7 @@ int main(int argc, char** argv)
     const auto_aim::PnpSolver pnpSolver(calibration);
 
     //输出根目录下按灰度阈值分一层，便于对比不同阈值跑出来的整批结果
-    const std::string methodTag = "gray" + std::to_string(detector.preprocessParams.binaryThreshold);
+    const std::string methodTag = "gray" + std::to_string(detector.binaryThreshold);
     const std::string runDir = outputRoot + "/" + methodTag;
 
     //列出输入目录里的所有 png 图片
@@ -78,7 +78,7 @@ int main(int argc, char** argv)
         const std::vector<auto_aim::Armor> armors = detector.matchArmors(bars);
 
         //1_preprocess：原图 | 二值图 左右对照，标灰度阈值，方便一眼看二值化效果
-        const cv::Mat compare = auto_aim::sideBySide(frame, pre.binary, detector.preprocessParams.binaryThreshold);
+        const cv::Mat compare = auto_aim::sideBySide(frame, pre.binary, detector.binaryThreshold);
         cv::imwrite(dir + "/1_preprocess.png", compare);
 
         //2_lightbar：逐候选画轮廓/最小外接矩形/中心线（各一色、细线、不标序号），左上角图例标四项指标
@@ -147,22 +147,22 @@ int main(int argc, char** argv)
         cv::imwrite(dir + "/4_number.png", numberVis);
 
         //5_pnp：直接对全部配对装甲板解算位姿（绕开分类过滤，没贴贴纸也能看到位姿），逐块画框标 rvec/tvec
-        const std::vector<auto_aim::ArmorPose> poses = pnpSolver.solve(armors);
+        const std::vector<auto_aim::Armor> solved = pnpSolver.solve(armors);
         cv::Mat pnpVis = frame.clone();
         double firstDistance = 0.0;
-        for (std::size_t p = 0; p < poses.size(); ++p)
+        for (std::size_t p = 0; p < solved.size(); ++p)
         {
-            const auto_aim::ArmorPose& pose = poses[p];
+            const auto_aim::Armor& armor = solved[p];
             const std::vector<cv::Point> quad = {
-                pose.armor.leftLight.top,
-                pose.armor.rightLight.top,
-                pose.armor.rightLight.bottom,
-                pose.armor.leftLight.bottom,
+                armor.leftLight.top,
+                armor.rightLight.top,
+                armor.rightLight.bottom,
+                armor.leftLight.bottom,
             };
             cv::polylines(pnpVis, quad, true, cv::Scalar(0, 255, 0), 2);
 
             //tvec 的模即相机到装甲板中心的距离(mm)，记首个用于打印
-            const double distance = cv::norm(pose.tvec);
+            const double distance = cv::norm(armor.tvec);
             if (p == 0)
             {
                 firstDistance = distance;
@@ -171,14 +171,14 @@ int main(int argc, char** argv)
             //tvec/rvec 都是 3x1 的 CV_64F，把三个分量拼成两行文本标到装甲板旁
             char tvecText[64];
             std::snprintf(tvecText, sizeof(tvecText), "t=[%.0f %.0f %.0f]mm",
-                          pose.tvec.at<double>(0), pose.tvec.at<double>(1), pose.tvec.at<double>(2));
+                          armor.tvec.at<double>(0), armor.tvec.at<double>(1), armor.tvec.at<double>(2));
             char rvecText[64];
             std::snprintf(rvecText, sizeof(rvecText), "r=[%.2f %.2f %.2f]",
-                          pose.rvec.at<double>(0), pose.rvec.at<double>(1), pose.rvec.at<double>(2));
+                          armor.rvec.at<double>(0), armor.rvec.at<double>(1), armor.rvec.at<double>(2));
 
             //以装甲板中心为基准，rvec 在上一行、tvec 在下一行，避免重叠
-            const cv::Point rvecOrg(pose.armor.center.x, pose.armor.center.y - 10);
-            const cv::Point tvecOrg(pose.armor.center.x, pose.armor.center.y + 15);
+            const cv::Point rvecOrg(armor.center.x, armor.center.y - 10);
+            const cv::Point tvecOrg(armor.center.x, armor.center.y + 15);
             cv::putText(pnpVis, rvecText, rvecOrg, cv::FONT_HERSHEY_SIMPLEX, 0.5,
                         cv::Scalar(0, 255, 0), 2);
             cv::putText(pnpVis, tvecText, tvecOrg, cv::FONT_HERSHEY_SIMPLEX, 0.5,
@@ -192,7 +192,7 @@ int main(int argc, char** argv)
                   << " lightbars=" << bars.size() << "(draw " << lightbarPassed << ")"
                   << " matched=" << armors.size() << "(draw " << armorPassed << ")"
                   << " kept=" << kept
-                  << " solved=" << poses.size()
+                  << " solved=" << solved.size()
                   << " first_distance_mm=" << static_cast<int>(firstDistance) << '\n';
     }
 

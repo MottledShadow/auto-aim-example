@@ -13,7 +13,7 @@
 #include <opencv2/imgproc.hpp>
 
 #include "debug_draw.hpp"
-#include "geometry_detector.hpp"
+#include "lightbar_detector.hpp"
 #include "hik_camera.hpp"
 #include "latest_slot.hpp"
 #include "number_classifier.hpp"
@@ -42,8 +42,8 @@ struct FrameResult
     std::vector<auto_aim::LightBar> bars;
     //number 用：每块配对装甲的数字诊断标注（不过滤）
     std::vector<NumberAnno> numbers;
-    //pnp 用：对全部配对装甲解算出的位姿（绕开分类过滤）
-    std::vector<auto_aim::ArmorPose> poses;
+    //pnp 用：对全部配对装甲解算出位姿的装甲板（绕开分类过滤，Armor 自带 rvec/tvec）
+    std::vector<auto_aim::Armor> solved;
     //各阶段计数，画在状态栏
     std::size_t barCount = 0;
     std::size_t armorCount = 0;
@@ -52,8 +52,8 @@ struct FrameResult
 
 int run()
 {
-    //几何检测器无状态，参数走头文件默认值；要改阈值改 geometry_detector.hpp
-    auto_aim::GeometryDetector detector;
+    //几何检测器无状态，参数走头文件默认值；要改阈值改 lightbar_detector.hpp
+    auto_aim::LightbarDetector detector;
 
     //数字分类器：构造时加载一次网络+标签（有状态、开销大），失败只告警（不挡 PnP）
     auto_aim::NumberClassifierParams numberParams;
@@ -167,7 +167,7 @@ int run()
             }
 
             //PnP 直接对全部配对装甲解算（绕开分类过滤，没贴贴纸也能看到位姿）
-            output.poses = pnpSolver.solve(armors);
+            output.solved = pnpSolver.solve(armors);
 
             slotVis.publish(std::move(output));
             ++detectCount;
@@ -234,26 +234,26 @@ int run()
         //层 5：PnP 标注（逐块画框 + 两行 rvec/tvec）
         if (layer[5])
         {
-            for (const auto_aim::ArmorPose& pose : resultFrame.poses)
+            for (const auto_aim::Armor& armor : resultFrame.solved)
             {
                 const std::vector<cv::Point> quad = {
-                    pose.armor.leftLight.top,
-                    pose.armor.rightLight.top,
-                    pose.armor.rightLight.bottom,
-                    pose.armor.leftLight.bottom,
+                    armor.leftLight.top,
+                    armor.rightLight.top,
+                    armor.rightLight.bottom,
+                    armor.leftLight.bottom,
                 };
                 cv::polylines(vis, quad, true, cv::Scalar(0, 255, 0), 2);
 
                 //tvec/rvec 都是 3x1 的 CV_64F，把三个分量拼成两行文本标到装甲板旁
                 char tvecText[64];
                 std::snprintf(tvecText, sizeof(tvecText), "t=[%.0f %.0f %.0f]mm",
-                              pose.tvec.at<double>(0), pose.tvec.at<double>(1), pose.tvec.at<double>(2));
+                              armor.tvec.at<double>(0), armor.tvec.at<double>(1), armor.tvec.at<double>(2));
                 char rvecText[64];
                 std::snprintf(rvecText, sizeof(rvecText), "r=[%.2f %.2f %.2f]",
-                              pose.rvec.at<double>(0), pose.rvec.at<double>(1), pose.rvec.at<double>(2));
+                              armor.rvec.at<double>(0), armor.rvec.at<double>(1), armor.rvec.at<double>(2));
 
-                const cv::Point rvecOrg(pose.armor.center.x, pose.armor.center.y - 10);
-                const cv::Point tvecOrg(pose.armor.center.x, pose.armor.center.y + 15);
+                const cv::Point rvecOrg(armor.center.x, armor.center.y - 10);
+                const cv::Point tvecOrg(armor.center.x, armor.center.y + 15);
                 cv::putText(vis, rvecText, rvecOrg, cv::FONT_HERSHEY_SIMPLEX, 0.5,
                             cv::Scalar(0, 255, 0), 2);
                 cv::putText(vis, tvecText, tvecOrg, cv::FONT_HERSHEY_SIMPLEX, 0.5,
@@ -271,7 +271,7 @@ int run()
         std::snprintf(status, sizeof(status),
                       "%s  bars=%zu armors=%zu kept=%zu solved=%zu  cap=%.1f det=%.1f",
                       layersText.c_str(), resultFrame.barCount, resultFrame.armorCount,
-                      resultFrame.kept, resultFrame.poses.size(), captureFps, detectFps);
+                      resultFrame.kept, resultFrame.solved.size(), captureFps, detectFps);
         cv::putText(vis, status, cv::Point(10, vis.rows - 12),
                     cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(0, 255, 0), 2);
 
@@ -294,7 +294,7 @@ int run()
                       << " bars=" << resultFrame.barCount
                       << " armors=" << resultFrame.armorCount
                       << " kept=" << resultFrame.kept
-                      << " solved=" << resultFrame.poses.size() << '\n';
+                      << " solved=" << resultFrame.solved.size() << '\n';
             lastPrint = now;
             lastCapture = capture;
             lastDetect = detect;
