@@ -58,6 +58,10 @@ public:
 
     double tickToSecond = 1.0;   // 设备 tick → 秒 换算系数；未标定默认 1.0，标定后只改这里
 
+    //观测更新的低通增益：posGain 越大越信观测(越灵敏越抖)，velGain 决定残差折进速度的比例
+    double posGain = 0.5;        // 位置/角度一阶低通增益 (alpha)
+    double velGain = 0.1;        // 速度低通增益 (beta)
+
 private:
     // 相机系装甲板 → 世界系精简装甲板：每帧 IMU 四元数(机体→世界) + 固定光学系重映射
     // tvec→世界系位置，rvec(经 Rodrigues)→世界系朝向四元数，携带 type/number。读 armors_/quaternion_，写 tracked_
@@ -68,6 +72,9 @@ private:
 
     // 匀速模型预测：位置/高度/角度按 当前值 + 速度 × dt 推进（dt 由成员时间戳算）
     void predict();
+
+    // 观测更新：用本帧世界系装甲板反推的整车状态低通修正 state_，并由残差低通估计速度
+    void update();
 
     // 世界系朝向四元数(w,x,y,z) → 绕 z 轴 yaw 角(rad)
     static double orientationToYaw(const cv::Vec4d& quaternion);

@@ -30,13 +30,16 @@ std::vector<TrackedArmor> Tracker::track(const DetectionResult& detection)
             lastTimestamp_ = timestamp_;
             initialized_ = true;
         }
+        return tracked_;
     }
-    else
+
+    //后续帧：先按两帧间隔匀速预测，再用本帧观测低通修正（没观测就只预测，靠模型滑行）
+    predict();
+    if (!tracked_.empty())
     {
-        //后续帧：按两帧间隔做预测，时间基准滚动更新
-        predict();
-        lastTimestamp_ = timestamp_;
+        update();
     }
+    lastTimestamp_ = timestamp_;
 
     return tracked_;
 }
@@ -131,6 +134,36 @@ void Tracker::predict()
     state_.yc  += state_.vyc  * dt;
     state_.z   += state_.vz   * dt;
     state_.yaw += state_.vYaw * dt;
+}
+
+void Tracker::update()
+{
+    //本帧观测的整车状态：由世界系装甲板反推（同 initStateFromArmor）——中心 xy、高度 z、角度 yaw
+    const TrackedArmor& armor = tracked_.front();
+    const double yawObs = orientationToYaw(armor.orientation);
+    const double zObs = armor.position[2];
+    const double xcObs = armor.position[0] + state_.r * std::cos(yawObs);
+    const double ycObs = armor.position[1] + state_.r * std::sin(yawObs);
+
+    //dt 与 predict 同一口径（本帧-上帧），把位置残差折算成速度用
+    const double dt = static_cast<double>(timestamp_ - lastTimestamp_) * tickToSecond;
+
+    //残差 = 观测 - 预测；yaw 残差绕到 [-pi, pi]，避免过 ±pi 时跳变
+    const double pi = std::acos(-1.0);
+    const double rx = xcObs - state_.xc;
+    const double ry = ycObs - state_.yc;
+    const double rz = zObs - state_.z;
+    const double rYaw = std::remainder(yawObs - state_.yaw, 2.0 * pi);
+
+    //位置/角度按 posGain 吸收残差（一阶低通）；速度按 velGain 吸收 残差/dt（等价对速度做低通）
+    state_.xc  += posGain * rx;
+    state_.yc  += posGain * ry;
+    state_.z   += posGain * rz;
+    state_.yaw += posGain * rYaw;
+    state_.vxc  += velGain * rx / dt;
+    state_.vyc  += velGain * ry / dt;
+    state_.vz   += velGain * rz / dt;
+    state_.vYaw += velGain * rYaw / dt;
 }
 
 double Tracker::orientationToYaw(const cv::Vec4d& q)
