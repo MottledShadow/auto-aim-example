@@ -21,24 +21,71 @@ std::vector<TrackedArmor> Tracker::track(const DetectionResult& detection)
 
     toWorld();   //填 tracked_
 
-    if (!initialized_)
+    //丢失态：没有模型，等一个有效观测重新起模型后进入确认中
+    if (trackerState_ == TrackerState::Lost)
     {
-        //第一帧：用观测初始化状态并记下时间基准
         if (!tracked_.empty())
         {
             initStateFromArmor();
             lastTimestamp_ = timestamp_;
-            initialized_ = true;
+            trackerState_ = TrackerState::Detecting;
+            detectCount_ = 0;
         }
         return tracked_;
     }
 
-    //后续帧：先按两帧间隔匀速预测，再用本帧观测低通修正（没观测就只预测，靠模型滑行）
+    //已有模型：先按两帧间隔匀速预测，再用本帧观测做位置差/角度差双阈值匹配判定
     predict();
+    bool matched = false;
     if (!tracked_.empty())
     {
-        update();
+        matched = update();   //匹配成功才低通修正 state_ 并返回 true，否则靠 predict 滑行
     }
+
+    //按匹配结果推进状态机
+    switch (trackerState_)
+    {
+    case TrackerState::Detecting:
+        if (matched)
+        {
+            //确认中累计匹配帧，够 trackingThreshold 就转追踪
+            detectCount_++;
+            if (detectCount_ >= trackingThreshold)
+                trackerState_ = TrackerState::Tracking;
+        }
+        else
+        {
+            //确认中漏一帧就退回丢失、重新起模型
+            detectCount_ = 0;
+            trackerState_ = TrackerState::Lost;
+        }
+        break;
+    case TrackerState::Tracking:
+        //追踪中丢观测：先进暂时丢失，靠 predict 滑行
+        if (!matched)
+        {
+            trackerState_ = TrackerState::TempLost;
+            lostCount_ = 1;
+        }
+        break;
+    case TrackerState::TempLost:
+        if (matched)
+        {
+            //暂时丢失期间重新匹配上：回到追踪
+            trackerState_ = TrackerState::Tracking;
+        }
+        else
+        {
+            //连续滑行超过 lostThreshold 帧：判彻底丢失，下个观测重新 init
+            lostCount_++;
+            if (lostCount_ > lostThreshold)
+                trackerState_ = TrackerState::Lost;
+        }
+        break;
+    default:
+        break;
+    }
+
     lastTimestamp_ = timestamp_;
 
     return tracked_;
@@ -136,11 +183,37 @@ void Tracker::predict()
     state_.yaw += state_.vYaw * dt;
 }
 
-void Tracker::update()
+bool Tracker::update()
 {
-    //本帧观测的整车状态：由世界系装甲板反推（同 initStateFromArmor）——中心 xy、高度 z、角度 yaw
-    const TrackedArmor& armor = tracked_.front();
+    //由预测状态反推预测装甲世界位置（initStateFromArmor 里 xc = xa + r*cos(yaw) 的逆）
+    const double xaPred = state_.xc - state_.r * std::cos(state_.yaw);
+    const double yaPred = state_.yc - state_.r * std::sin(state_.yaw);
+    const double zaPred = state_.z;
+
+    //选距离预测位置最近的观测装甲板（世界系欧氏距离平方）
+    std::size_t best = 0;
+    double bestDist = 0.0;
+    for (std::size_t i = 0; i < tracked_.size(); ++i)
+    {
+        const cv::Vec3d& p = tracked_[i].position;
+        const double dx = p[0] - xaPred;
+        const double dy = p[1] - yaPred;
+        const double dz = p[2] - zaPred;
+        const double d = dx * dx + dy * dy + dz * dz;
+        if (i == 0 || d < bestDist) { bestDist = d; best = i; }
+    }
+
+    //本帧观测的整车状态：由选中的世界系装甲板反推——中心 xy、高度 z、角度 yaw
+    const TrackedArmor& armor = tracked_[best];
     const double yawObs = orientationToYaw(armor.orientation);
+
+    //位置差(mm)与 yaw 角度差(rad)双阈值判匹配：任一超阈就算本帧没匹配上，不修正 state_，靠 predict 滑行
+    const double pi = std::acos(-1.0);
+    const double posErr = std::sqrt(bestDist);   //bestDist 是选板时的距离平方，开方即位置差
+    const double yawErr = std::abs(std::remainder(yawObs - state_.yaw, 2.0 * pi));
+    if (posErr > maxMatchDistance || yawErr > maxMatchYaw)
+        return false;
+
     const double zObs = armor.position[2];
     const double xcObs = armor.position[0] + state_.r * std::cos(yawObs);
     const double ycObs = armor.position[1] + state_.r * std::sin(yawObs);
@@ -149,7 +222,6 @@ void Tracker::update()
     const double dt = static_cast<double>(timestamp_ - lastTimestamp_) * tickToSecond;
 
     //残差 = 观测 - 预测；yaw 残差绕到 [-pi, pi]，避免过 ±pi 时跳变
-    const double pi = std::acos(-1.0);
     const double rx = xcObs - state_.xc;
     const double ry = ycObs - state_.yc;
     const double rz = zObs - state_.z;
@@ -164,6 +236,8 @@ void Tracker::update()
     state_.vyc  += velGain * ry / dt;
     state_.vz   += velGain * rz / dt;
     state_.vYaw += velGain * rYaw / dt;
+
+    return true;
 }
 
 double Tracker::orientationToYaw(const cv::Vec4d& q)
@@ -178,7 +252,17 @@ double Tracker::orientationToYaw(const cv::Vec4d& q)
 
 void Tracker::initStateFromArmor()
 {
-    const TrackedArmor& armor = tracked_.front();
+    //选距离画面中心最近的装甲板：比 armors_[i] 像素 center 与 imageCenter 的距离（与 tracked_ 同序对齐）
+    std::size_t best = 0;
+    double bestDist = 0.0;
+    for (std::size_t i = 0; i < armors_.size(); ++i)
+    {
+        const double dx = armors_[i].center.x - imageCenter.x;
+        const double dy = armors_[i].center.y - imageCenter.y;
+        const double d = dx * dx + dy * dy;
+        if (i == 0 || d < bestDist) { bestDist = d; best = i; }
+    }
+    const TrackedArmor& armor = tracked_[best];
     //装甲板角度由世界系朝向四元数得到
     const double yaw = orientationToYaw(armor.orientation);
     //装甲板高度直接取世界系坐标 z
@@ -194,7 +278,8 @@ void Tracker::initStateFromArmor()
     state_.yc = ya + r * std::sin(yaw);
     state_.z = z;
     state_.yaw = yaw;
-    //速度全部保持默认 0，半径保持默认 200mm
+    //速度全部清零（完全重置语义：重新起模型时不带入上一目标的速度），半径保持默认 200mm
+    state_.vxc = state_.vyc = state_.vz = state_.vYaw = 0.0;
 }
 
 } // namespace auto_aim
