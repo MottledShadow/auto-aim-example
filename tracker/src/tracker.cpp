@@ -12,7 +12,7 @@ Tracker::Tracker(const CameraToWorldParams& params)
 {
 }
 
-std::vector<TrackedArmor> Tracker::track(const std::vector<Armor>& armors, const cv::Vec4d& quaternion) const
+std::vector<TrackedArmor> Tracker::track(const std::vector<Armor>& armors, const cv::Vec4d& quaternion)
 {
     //从 IMU 四元数取四个分量，顺序按 (w, x, y, z)；若电控发 (x, y, z, w) 改这里的下标
     const double w = quaternion[0];
@@ -92,7 +92,44 @@ std::vector<TrackedArmor> Tracker::track(const std::vector<Armor>& armors, const
         tracked.push_back(out);
     }
 
+    //第一帧拿到装甲板时初始化整车状态；后续帧的预测/更新留待后续实现
+    if (!initialized_ && !tracked.empty())
+    {
+        initStateFromArmor(tracked.front());
+        initialized_ = true;
+    }
+
     return tracked;
+}
+
+double Tracker::orientationToYaw(const cv::Vec4d& q)
+{
+    //q = (w, x, y, z)，取绕世界系 z 轴的偏航角
+    const double w = q[0];
+    const double x = q[1];
+    const double y = q[2];
+    const double z = q[3];
+    return std::atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z));
+}
+
+void Tracker::initStateFromArmor(const TrackedArmor& armor)
+{
+    //装甲板角度由世界系朝向四元数得到
+    const double yaw = orientationToYaw(armor.orientation);
+    //装甲板高度直接取世界系坐标 z
+    const double z = armor.position[2];
+    //半径默认 200mm，取装甲板 xy
+    const double r = state_.r;
+    const double xa = armor.position[0];
+    const double ya = armor.position[1];
+
+    //机器人中心 = 装甲板 xy 沿 yaw 方向偏移一个半径
+    //约定：xc = xa + r*cos(yaw), yc = ya + r*sin(yaw)（rm_vision 惯例，符号上车再核）
+    state_.xc = xa + r * std::cos(yaw);
+    state_.yc = ya + r * std::sin(yaw);
+    state_.z = z;
+    state_.yaw = yaw;
+    //速度全部保持默认 0，半径保持默认 200mm
 }
 
 } // namespace auto_aim
