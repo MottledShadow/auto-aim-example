@@ -18,7 +18,6 @@
 #include "latest_slot.hpp"
 #include "number_classifier.hpp"
 #include "pnp_solver.hpp"
-#include "tracker.hpp"
 
 namespace
 {
@@ -46,8 +45,6 @@ struct FrameResult
     std::vector<NumberAnno> numbers;
     //pnp 用：对全部配对装甲解算出位姿的装甲板（绕开分类过滤，Armor 自带 rvec/tvec）
     std::vector<auto_aim::Armor> solved;
-    //追踪器输出：世界系精简装甲板（验证 取帧→识别→追踪 用新对象贯通）
-    std::vector<auto_aim::TrackedArmor> tracked;
     //各阶段计数，画在状态栏
     std::size_t barCount = 0;
     std::size_t armorCount = 0;
@@ -74,9 +71,6 @@ int run()
         std::cerr << "calibration load failed: " << calibration.error << '\n';
     }
     const auto_aim::PnpSolver pnpSolver(calibration);
-
-    //追踪器：接 detector 的相机系装甲板，转世界系；外参走默认占位，IMU 未接入前用单位四元数
-    auto_aim::Tracker tracker;
 
     //初始化相机（打开设备并启动内部采集线程）
     auto_aim::HikCamera camera;
@@ -181,10 +175,6 @@ int run()
 
             //PnP 直接对全部配对装甲解算（绕开分类过滤，没贴贴纸也能看到位姿）
             output.solved = pnpSolver.solve(armors);
-
-            //把识别结果连同透传的时间戳/四元数打包，喂给追踪器转世界系
-            const auto_aim::DetectionResult detection{output.solved, raw.timestamp, raw.quaternion};
-            output.tracked = tracker.track(detection);
 
             slotVis.publish(std::move(output));
             ++detectCount;
@@ -311,15 +301,7 @@ int run()
                       << " bars=" << resultFrame.barCount
                       << " armors=" << resultFrame.armorCount
                       << " kept=" << resultFrame.kept
-                      << " solved=" << resultFrame.solved.size()
-                      << " tracked=" << resultFrame.tracked.size();
-            //有追踪结果就打印第一块的世界系坐标，验证 取帧→识别→追踪 用新对象贯通
-            if (!resultFrame.tracked.empty())
-            {
-                const cv::Vec3d& p = resultFrame.tracked.front().position;
-                std::cout << " world=[" << std::setprecision(0)
-                          << p[0] << ' ' << p[1] << ' ' << p[2] << "]mm";
-            }
+                      << " solved=" << resultFrame.solved.size();
             std::cout << '\n';
             lastPrint = now;
             lastCapture = capture;

@@ -159,7 +159,6 @@ target_include_directories(detector_debug_camera
 target_link_libraries(detector_debug_camera
     PRIVATE
         detector
-        tracker
         ${OpenCV_LIBS}
         "${MVCAM_LIBRARY}"
         Threads::Threads
