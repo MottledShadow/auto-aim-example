@@ -101,6 +101,7 @@ private:
     TrackerState trackerState_ = TrackerState::Lost;   // 上电默认丢失
     int detectCount_ = 0;   // 确认中累计匹配帧数
     int lostCount_ = 0;     // 暂时丢失累计帧数
+    std::string trackedNumber_;   // 当前锁定目标的数字("1"/"3"/"guard")，init 设定；只匹配同号板 + 正常切换判定用
 
     std::vector<Armor> armors_;          // 本帧相机系装甲板(输入)
     cv::Vec4d quaternion_{1, 0, 0, 0};   // 本帧 IMU 四元数(输入)

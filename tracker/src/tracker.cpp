@@ -157,18 +157,27 @@ bool Tracker::update()
     const double yaPred = state_.yc - state_.r * std::sin(state_.yaw);
     const double zaPred = state_.z;
 
-    //选距离预测位置最近的观测装甲板（世界系欧氏距离平方）
+    //只在与锁定数字相同的板里选最近，
     std::size_t best = 0;
     double bestDist = 0.0;
+    int sameNumberCount = 0;
     for (std::size_t i = 0; i < tracked_.size(); ++i)
     {
+        if (tracked_[i].number != trackedNumber_)
+            continue;
+
         const cv::Vec3d& p = tracked_[i].position;
         const double dx = p[0] - xaPred;
         const double dy = p[1] - yaPred;
         const double dz = p[2] - zaPred;
         const double d = dx * dx + dy * dy + dz * dz;
-        if (i == 0 || d < bestDist) { bestDist = d; best = i; }
+        if (sameNumberCount == 0 || d < bestDist) { bestDist = d; best = i; }
+        ++sameNumberCount;
     }
+
+    //本帧没有同号板：无观测可匹配，直接判丢失
+    if (sameNumberCount == 0)
+        return false;
 
     //本帧观测的整车状态：由选中的世界系装甲板反推——中心 xy、高度 z、角度 yaw
     const TrackedArmor& armor = tracked_[best];
@@ -178,7 +187,16 @@ bool Tracker::update()
     const double posErr = std::sqrt(bestDist);   //bestDist 是选板时的距离平方，开方即位置差
     const double yawErr = std::abs(std::remainder(yawObs - state_.yaw, 2.0 * M_PI));
     if (posErr > maxMatchDistance || yawErr > maxMatchYaw)
+    {
+        //且本帧同号板恰好一块 → 把 yaw/z ；仍返回 false，
+        //让状态机照常进/留 TempLost，靠下一帧在重锁位姿附近匹配来确认(多一层保护)
+        if (yawErr > maxMatchYaw && sameNumberCount == 1)
+        {
+            state_.yaw = yawObs;
+            state_.z = armor.position[2];
+        }
         return false;
+    }
 
     const double xaObs = armor.position[0];
     const double yaObs = armor.position[1];
@@ -241,6 +259,8 @@ void Tracker::initStateFromArmor()
         if (i == 0 || d < bestDist) { bestDist = d; best = i; }
     }
     const TrackedArmor& armor = tracked_[best];
+    //记住锁定目标数字：之后 update 只匹配同号板，并据此判正常切换
+    trackedNumber_ = armor.number;
     //装甲板角度由世界系朝向四元数得到
     const double yaw = orientationToYaw(armor.orientation);
     //装甲板高度直接取世界系坐标 z
