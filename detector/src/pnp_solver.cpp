@@ -1,5 +1,6 @@
 #include "pnp_solver.hpp"
 
+#include <cmath>
 #include <stdexcept>
 
 #include <opencv2/calib3d.hpp>
@@ -114,6 +115,12 @@ std::vector<Armor> PnpSolver::solve(const std::vector<Armor>& armors) const
         Armor result = armor;
         result.rvec = rvec;
         result.tvec = tvec;
+
+        //算装甲中心到主点(cx,cy)的像素距离
+        const double cx = calibration_.cameraMatrix.at<double>(0, 2);
+        const double cy = calibration_.cameraMatrix.at<double>(1, 2);
+        result.distanceToPrincipalPoint = static_cast<float>(std::hypot(armor.center.x - cx, armor.center.y - cy));
+
         solved.push_back(result);
     }
 

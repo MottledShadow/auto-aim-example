@@ -49,6 +49,7 @@ struct Armor
     float confidence = 0.0F;     // 分类 softmax 最大概率
     cv::Mat rvec;                // PnP 解出的旋转向量（相机系，3x1 CV_64F），未解算时为空
     cv::Mat tvec;                // PnP 解出的平移向量（相机系，mm，3x1 CV_64F），未解算时为空
+    float distanceToPrincipalPoint = 0.0F;  // 装甲板中心到相机主点(cx,cy)的像素距离；
 };
 
 // 相机取帧 → 识别器：一帧原图 + 取帧时刻同步采集的时间戳/IMU 姿态，随帧一路透传到追踪器

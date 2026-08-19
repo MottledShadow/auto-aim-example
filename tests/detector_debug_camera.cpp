@@ -182,9 +182,7 @@ int run()
             //PnP 直接对全部配对装甲解算（绕开分类过滤，没贴贴纸也能看到位姿）
             output.solved = pnpSolver.solve(armors);
 
-            //把识别结果连同透传的时间戳/四元数打包，喂给追踪器转世界系（验证端到端贯通）
-            //画面中心按实际帧尺寸给追踪器（init 选板用），帧尺寸恒定、每帧赋值也无妨
-            tracker.imageCenter = cv::Point2f(frame.cols / 2.0F, frame.rows / 2.0F);
+            //把识别结果连同透传的时间戳/四元数打包，喂给追踪器转世界系
             const auto_aim::DetectionResult detection{output.solved, raw.timestamp, raw.quaternion};
             output.tracked = tracker.track(detection);
 

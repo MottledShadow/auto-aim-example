@@ -74,15 +74,12 @@ public:
     double maxMatchDistance = 200.0; // 匹配位置差阈值, mm —— 占位值，需上车调参
     double maxMatchYaw = 0.4;        // 匹配角度差阈值, rad —— 占位值，需上车调参
 
-    //画面中心像素坐标，init 选板用（选离它最近的装甲板）。调用方按相机分辨率设 (w/2, h/2)
-    cv::Point2f imageCenter{720.0F, 540.0F};   // 默认按 ~1440x1080 中心，标定主点约 (708,528)
-
 private:
     // 相机系装甲板 → 世界系精简装甲板：每帧 IMU 四元数(机体→世界) + 固定光学系重映射
     // tvec→世界系位置，rvec(经 Rodrigues)→世界系朝向四元数，携带 type/number。读 armors_/quaternion_，写 tracked_
     void toWorld();
 
-    // 初始化整车状态：选离画面中心最近的装甲板，z 取自坐标、yaw 由四元数、中心由 yaw+xy+r 推出、速度置零
+    // 初始化整车状态：选离相机主点最近的装甲板，z 取自坐标、yaw 由四元数、中心由 yaw+xy+r 推出、速度置零
     void initStateFromArmor();
 
     // 匀速模型预测：位置/高度/角度按 当前值 + 速度 × dt 推进（dt 由成员时间戳算）

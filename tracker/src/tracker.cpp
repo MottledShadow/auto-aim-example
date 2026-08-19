@@ -218,14 +218,12 @@ double Tracker::orientationToYaw(const cv::Vec4d& q)
 
 void Tracker::initStateFromArmor()
 {
-    //选距离画面中心最近的装甲板：比 armors_[i] 像素 center 与 imageCenter 的距离（与 tracked_ 同序对齐）
+    //选距离相机主点最近的装甲板
     std::size_t best = 0;
     double bestDist = 0.0;
     for (std::size_t i = 0; i < armors_.size(); ++i)
     {
-        const double dx = armors_[i].center.x - imageCenter.x;
-        const double dy = armors_[i].center.y - imageCenter.y;
-        const double d = dx * dx + dy * dy;
+        const double d = armors_[i].distanceToPrincipalPoint;
         if (i == 0 || d < bestDist) { bestDist = d; best = i; }
     }
     const TrackedArmor& armor = tracked_[best];
