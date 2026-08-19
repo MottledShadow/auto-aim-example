@@ -180,9 +180,17 @@ bool Tracker::update()
     if (posErr > maxMatchDistance || yawErr > maxMatchYaw)
         return false;
 
-    const double zObs = armor.position[2];
-    const double xcObs = armor.position[0] + state_.r * std::cos(yawObs);
-    const double ycObs = armor.position[1] + state_.r * std::sin(yawObs);
+    const double xaObs = armor.position[0];
+    const double yaObs = armor.position[1];
+    const double zObs  = armor.position[2];
+
+    //把观测装甲位置按当前半径、观测 yaw 反算成中心观测（xa = xc - r*cos(yaw) 的逆）
+    const double xcObs = xaObs + state_.r * std::cos(yawObs);
+    const double ycObs = yaObs + state_.r * std::sin(yawObs);
+
+    //观测半径：当前中心估计指向观测装甲的水平向量沿 yaw 方向投影，单独给半径一个观测量
+    //注：径向上中心平移与半径变化本就耦合，单帧无法严格分离，这里靠较小的 radiusGain 缓慢收敛
+    const double rObs = (state_.xc - xaObs) * std::cos(yawObs) + (state_.yc - yaObs) * std::sin(yawObs);
 
     //dt 与 predict 同一口径（本帧-上帧），把位置残差折算成速度用
     const double dt = static_cast<double>(timestamp_ - lastTimestamp_) * tickToSecond;
@@ -192,6 +200,7 @@ bool Tracker::update()
     const double ry = ycObs - state_.yc;
     const double rz = zObs - state_.z;
     const double rYaw = std::remainder(yawObs - state_.yaw, 2.0 * M_PI);
+    const double rRadius = rObs - state_.r;
 
     //位置/角度按 posGain 吸收残差（一阶低通）；速度按 velGain 吸收 残差/dt（等价对速度做低通）
     state_.xc  += posGain * rx;
@@ -202,6 +211,11 @@ bool Tracker::update()
     state_.vyc  += velGain * ry / dt;
     state_.vz   += velGain * rz / dt;
     state_.vYaw += velGain * rYaw / dt;
+
+    //半径无速度项，按较小的 radiusGain 缓慢低通，再 clamp 到合理区间防跳变
+    state_.r += radiusGain * rRadius;
+    if (state_.r < minRadius) state_.r = minRadius;
+    if (state_.r > maxRadius) state_.r = maxRadius;
 
     return true;
 }

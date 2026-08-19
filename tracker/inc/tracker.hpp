@@ -65,6 +65,7 @@ public:
     //观测更新的低通增益：posGain 越大越信观测(越灵敏越抖)，velGain 决定残差折进速度的比例
     double posGain = 0.5;        // 位置/角度一阶低通增益 (alpha)
     double velGain = 0.1;        // 速度低通增益 (beta)
+    double radiusGain = 0.05;    // 半径低通增益：半径变化慢，取比 posGain 小，避免与中心估计耦合抖动
 
     //状态机阈值：确认中累计够 trackingThreshold 帧转追踪，暂时丢失超过 lostThreshold 帧判彻底丢失
     int trackingThreshold = 20;      // 确认中累计匹配到这么多帧就转追踪
@@ -73,6 +74,10 @@ public:
     //匹配判定阈值：最近装甲板与预测的位置差/角度差都在阈值内才算匹配上（两者需上车调参）
     double maxMatchDistance = 200.0; // 匹配位置差阈值, mm —— 占位值，需上车调参
     double maxMatchYaw = 0.4;        // 匹配角度差阈值, rad —— 占位值，需上车调参
+
+    //半径估计范围：观测更新时把半径 clamp 到此区间，防跳变（需上车按实际装甲布局调参）
+    double minRadius = 100.0;        // 半径下限, mm —— 占位值，需上车调参
+    double maxRadius = 400.0;        // 半径上限, mm —— 占位值，需上车调参
 
 private:
     // 相机系装甲板 → 世界系精简装甲板：每帧 IMU 四元数(机体→世界) + 固定光学系重映射
