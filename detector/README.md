@@ -79,4 +79,4 @@ left.top → right.top → right.bottom → left.bottom
 
 ## 模型与运行时路径
 
-`NumberClassifierParams` 默认 `model/mlp.onnx`、`model/label.txt`，`loadCalibration` 默认 `config/camera_calibration.yml`——都相对**运行时工作目录**解析（Jetson 上是 `~/cross-snapshot`），与仓库里 `detector/model/` 的源码位置无关。部署脚本会把 `detector/model/` 送到远端 `model/`。
+`NumberClassifierParams` 默认 `model/mlp.onnx`、`model/label.txt`，`PnpSolver` 构造时读写死的 `config/camera_calibration.yml`（标定路径不走命令行，`PnpSolver::error()` 报加载失败）——都相对**运行时工作目录**解析（Jetson 上是 `~/cross-snapshot`），与仓库里 `detector/model/` 的源码位置无关。部署脚本会把 `detector/model/` 送到远端 `model/`。

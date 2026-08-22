@@ -21,16 +21,17 @@ struct PnpSolverParams
     int solvePnpMethod = cv::SOLVEPNP_IPPE;
 };
 
-CameraCalibration loadCalibration(const std::string& path = "config/camera_calibration.yml");
-
-// PnP 位姿解算器：构造时持有标定与参数，之后每帧把 rvec/tvec 写回装甲板
+// PnP 位姿解算器：构造时自己读相机标定，之后每帧把 rvec/tvec 写回装甲板
 class PnpSolver
 {
 public:
-    explicit PnpSolver(const CameraCalibration& calibration, const PnpSolverParams& params = {});
+    explicit PnpSolver(const PnpSolverParams& params = {});
 
     // 逐块解算并把位姿写进装甲板，返回带位姿的装甲板；解算失败的装甲板被丢弃
     std::vector<Armor> solve(const std::vector<Armor>& armors) const;
+
+    // 相机标定加载失败原因，空表示成功（失败时 solve 会返回空位姿）
+    const std::string& error() const { return calibration_.error; }
 
 private:
     CameraCalibration calibration_;

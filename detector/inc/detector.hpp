@@ -14,12 +14,11 @@ namespace auto_aim
 {
 
 // 生产入口 facade：一次构造，持有几何检测 + 数字分类 + PnP 三件套；
-// 每帧 detect(frame) → 带位姿的装甲板（Armor 自带 rvec/tvec）。追踪器只依赖这一个类和 Armor。
-// 调参仍走各 *Params 的头文件默认值，故构造只需相机标定。
+// 每帧 detect(frame) → 带位姿的装甲板（Armor 自带 rvec/tvec）
 class Detector
 {
 public:
-    explicit Detector(const CameraCalibration& calibration);
+    explicit Detector();
 
     // 完整识别流水线：预处理 → 灯条筛选 → 装甲配对 → 数字分类 → PnP
     // 入参 FrameInput 带图像+时间戳+IMU 四元数；返回 DetectionResult，把时间戳/四元数原样透传给追踪器

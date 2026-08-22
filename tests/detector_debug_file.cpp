@@ -16,10 +16,10 @@
 
 int main(int argc, char** argv)
 {
-    //输入图片目录、输出根目录、标定文件路径（都可用命令行覆盖，默认对应部署脚本的约定）
+    //输入图片目录、输出根目录（可用命令行覆盖，默认对应部署脚本的约定）
+    //标定路径写死在 PnpSolver 里，命令行不再传
     const std::string inputDir = (argc > 1) ? argv[1] : "captures";
     const std::string outputRoot = (argc > 2) ? argv[2] : "test_output";
-    const std::string calibPath = (argc > 3) ? argv[3] : "config/camera_calibration.yml";
 
     //几何检测器无状态，参数走头文件默认值；要改阈值直接改 lightbar_detector.hpp
     auto_aim::LightbarDetector detector;
@@ -32,13 +32,12 @@ int main(int argc, char** argv)
         std::cerr << "classifier load failed: " << classifier.error() << '\n';
     }
 
-    //PnP 求解器：需要相机标定，失败只告警（solve 会返回空位姿）
-    const auto_aim::CameraCalibration calibration = auto_aim::loadCalibration(calibPath);
-    if (!calibration.error.empty())
+    //PnP 求解器：构造时自己读标定（路径写死），失败只告警（solve 会返回空位姿）
+    const auto_aim::PnpSolver pnpSolver;
+    if (!pnpSolver.error().empty())
     {
-        std::cerr << "calibration load failed: " << calibration.error << '\n';
+        std::cerr << "calibration load failed: " << pnpSolver.error() << '\n';
     }
-    const auto_aim::PnpSolver pnpSolver(calibration);
 
     //输出根目录下按灰度阈值分一层，便于对比不同阈值跑出来的整批结果
     const std::string methodTag = "gray" + std::to_string(detector.binaryThreshold);

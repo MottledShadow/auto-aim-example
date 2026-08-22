@@ -3,10 +3,10 @@
 namespace auto_aim
 {
 
-//三件套各自默认参数（走头文件），PnP 需要相机标定
-Detector::Detector(const CameraCalibration& calibration)
+//三件套各自默认参数
+Detector::Detector()
     : classifier_(NumberClassifierParams{})
-    , pnpSolver_(calibration, PnpSolverParams{})
+    , pnpSolver_(PnpSolverParams{})
 {
 }
 

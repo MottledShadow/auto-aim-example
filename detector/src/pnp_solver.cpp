@@ -9,15 +9,10 @@
 namespace auto_aim
 {
 
-CameraCalibration loadCalibration(const std::string& path)
+static CameraCalibration loadCalibration()
 {
+    const std::string path = "config/camera_calibration.yml";
     CameraCalibration calibration;
-
-    //空路径直接返回空标定（error 为空，交给调用方判断 cameraMatrix 是否可用）
-    if (path.empty())
-    {
-        return calibration;
-    }
 
     try
     {
@@ -58,8 +53,9 @@ CameraCalibration loadCalibration(const std::string& path)
     return calibration;
 }
 
-PnpSolver::PnpSolver(const CameraCalibration& calibration, const PnpSolverParams& params)
-    : calibration_(calibration), params_(params)
+//构造时自己读标定（路径写死），不再由调用方传入
+PnpSolver::PnpSolver(const PnpSolverParams& params)
+    : calibration_(loadCalibration()), params_(params)
 {
 }
 

@@ -64,13 +64,12 @@ int run()
         std::cerr << "classifier load failed: " << classifier.error() << '\n';
     }
 
-    //PnP 求解器：需要相机标定，失败只告警（solve 会返回空位姿）
-    const auto_aim::CameraCalibration calibration = auto_aim::loadCalibration();
-    if (!calibration.error.empty())
+    //PnP 求解器：构造时自己读标定（路径写死），失败只告警（solve 会返回空位姿）
+    const auto_aim::PnpSolver pnpSolver;
+    if (!pnpSolver.error().empty())
     {
-        std::cerr << "calibration load failed: " << calibration.error << '\n';
+        std::cerr << "calibration load failed: " << pnpSolver.error() << '\n';
     }
-    const auto_aim::PnpSolver pnpSolver(calibration);
 
     //初始化相机（打开设备并启动内部采集线程）
     auto_aim::HikCamera camera;

@@ -38,7 +38,7 @@ if [[ "$mode" == "file" ]]; then
 set -e
 cd \"\$HOME/$remote_dir\"
 chmod u+x $binary_name
-./$binary_name captures test_output config/camera_calibration.yml
+./$binary_name captures test_output
 "
     echo "结果保存在 Jetson: ~/$remote_dir/test_output/gray<阈值>/<图名>/{1_preprocess..5_pnp}.png"
     echo "如需取回开发机: scp -r $target:$remote_dir/test_output ./"
