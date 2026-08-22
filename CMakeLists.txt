@@ -37,6 +37,9 @@ add_subdirectory(detector)
 # tracker 追踪模块（静态库）：相机系装甲板 → 世界系精简装甲板，依赖 detector
 add_subdirectory(tracker)
 
+# serial 模块（静态库）：串口收 STM32 欧拉角，附带 serial_recv_test / serial_test 两个冒烟测试
+add_subdirectory(serial)
+
 add_executable(hik_camera_test
     tests/hik_camera_test.cpp
     hik_camera/hik_camera.cpp
@@ -171,16 +174,4 @@ set_target_properties(detector_debug_camera
         RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}"
         BUILD_RPATH "${MVCAM_LIBRARY_DIR}"
         INSTALL_RPATH "${MVCAM_LIBRARY_DIR}"
-)
-
-# 串口回显冒烟测试：只用 POSIX termios，不依赖 OpenCV / 相机 SDK / 线程，要连 Jetson 的 /dev/ttyTHS1
-add_executable(serial_test
-    serial/serial_test.cpp
-)
-
-target_compile_options(serial_test PRIVATE -Wall -Wextra -Wpedantic)
-
-set_target_properties(serial_test
-    PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}"
 )

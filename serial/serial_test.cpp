@@ -47,8 +47,7 @@ int main()
     // 允许接收
     tty.c_cflag |= CREAD | CLOCAL;
 
-    // read() 行为：
-    // 至少收到 1 个字节才返回
+    // read() 行为：至少收到 1 个字节才返回
     tty.c_cc[VMIN] = 1;
     tty.c_cc[VTIME] = 0;
 
@@ -62,14 +61,7 @@ int main()
 
     std::cout << "UART opened: " << device << '\n';
 
-    // 8. 先发送一句测试数据
-    const char msg[] = "hello from jetson\r\n";
-
-    if (write(fd, msg, sizeof(msg) - 1) < 0) {
-        std::cerr << "write failed\n";
-    }
-
-    // 9. 持续接收
+    // 8. 循环：等 STM32 发来数据 → 打印 → 原样回发给 STM32
     unsigned char buffer[256];
 
     while (true) {
@@ -81,15 +73,12 @@ int main()
             break;
         }
 
+        // STM32 发的是文本行（UART6_TEST\n），直接按字符打印，一眼能认
         std::cout << "received " << n << " bytes: ";
+        std::cout.write(reinterpret_cast<char*>(buffer), n);
+        std::cout.flush();
 
-        for (ssize_t i = 0; i < n; ++i) {
-            printf("%02X ", buffer[i]);
-        }
-
-        std::cout << '\n';
-
-        // 收到多少就原样回多少
+        // 收到多少就原样回多少（连同 \n 一起回，STM32 靠 \n 判定帧结束）
         if (write(fd, buffer, n) < 0) {
             std::cerr << "write failed: "
                       << std::strerror(errno) << '\n';
