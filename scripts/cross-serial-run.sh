@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# 交叉编译串口回显冒烟测试并部署到 Jetson 前台运行
+# stdout 经 SSH 回传到开发机，能实时看到 cout/printf；Ctrl-C 中断
+# 用法：cross-serial-run.sh
+
+target="jetson"
+project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+build_dir="$project_dir/build/cross"
+binary_name="serial_test"
+binary="$build_dir/$binary_name"
+remote_dir="cross-serial"
+
+echo "Configuring ARM64 build..."
+cmake -S "$project_dir" -B "$build_dir" \
+    -DCMAKE_TOOLCHAIN_FILE="$project_dir/jetson-toolchain.cmake"
+
+echo "Building $binary_name..."
+cmake --build "$build_dir" --target "$binary_name" --parallel
+
+echo "Deploying binary..."
+ssh "$target" "mkdir -p \"\$HOME/$remote_dir\""
+scp "$binary" "$target:$remote_dir/$binary_name"
+
+echo "Running $binary_name on Jetson (Ctrl-C to stop)..."
+# -t 分配伪终端：既能实时看到输出，也能用 Ctrl-C 中断死循环
+ssh -t "$target" "
+set -e
+cd \"\$HOME/$remote_dir\"
+chmod u+x $binary_name
+./$binary_name
+"

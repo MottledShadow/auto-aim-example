@@ -172,3 +172,15 @@ set_target_properties(detector_debug_camera
         BUILD_RPATH "${MVCAM_LIBRARY_DIR}"
         INSTALL_RPATH "${MVCAM_LIBRARY_DIR}"
 )
+
+# 串口回显冒烟测试：只用 POSIX termios，不依赖 OpenCV / 相机 SDK / 线程，要连 Jetson 的 /dev/ttyTHS1
+add_executable(serial_test
+    serial/serial_test.cpp
+)
+
+target_compile_options(serial_test PRIVATE -Wall -Wextra -Wpedantic)
+
+set_target_properties(serial_test
+    PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}"
+)
