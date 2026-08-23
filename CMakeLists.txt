@@ -37,7 +37,7 @@ add_subdirectory(detector)
 # tracker 追踪模块（静态库）：相机系装甲板 → 世界系精简装甲板，依赖 detector
 add_subdirectory(tracker)
 
-# serial 模块（静态库）：串口收 STM32 欧拉角，附带 serial_recv_test / serial_test 两个冒烟测试
+# serial 模块（静态库）：串口收 STM32 四元数，附带 serial_recv_test / serial_test 两个冒烟测试
 add_subdirectory(serial)
 
 add_executable(hik_camera_test

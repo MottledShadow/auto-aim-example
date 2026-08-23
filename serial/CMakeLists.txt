@@ -1,4 +1,4 @@
-# serial 模块：串口收 STM32 的欧拉角帧，编成静态库
+# serial 模块：串口收 STM32 的四元数帧，编成静态库
 # serial.hpp 用 PUBLIC 暴露，下游 target 链接 serial 即自动拿到头文件搜索路径
 add_library(serial STATIC
     serial.cpp

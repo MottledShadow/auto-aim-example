@@ -4,7 +4,7 @@ set -euo pipefail
 # 交叉编译串口测试并部署到 Jetson 前台运行
 # stdout 经 SSH 回传到开发机，能实时看到输出；Ctrl-C 中断
 # 用法：cross-serial-run.sh [recv|echo]
-#   recv（默认）：serial_recv_test，收 STM32 欧拉角帧并打印，会一并送配置 yml
+#   recv（默认）：serial_recv_test，收 STM32 四元数帧并打印，会一并送配置 yml
 #   echo        ：serial_test，早期链路回显冒烟测试
 mode="${1:-recv}"
 case "$mode" in

@@ -11,9 +11,9 @@
 
 #include <opencv2/core.hpp>
 
-// 帧头 0x5A，之后 3 个 float32 小端 = yaw/pitch/roll
+// 帧头 0x5A，之后 4 个 float32 小端 = w/x/y/z
 static const unsigned char kFrameHeader = 0x5A;
-static const int kPayloadSize = 12;   // 3 × float32
+static const int kPayloadSize = 16;   // 4 × float32
 
 // 把 yml 里的整数波特率映射成 termios 的 Bxxxx 常量
 static speed_t toBaudConstant(int baudrate) {
@@ -156,7 +156,7 @@ Serial::~Serial() {
     }
 }
 
-EulerAngles Serial::latest() {
+Quaternion Serial::latest() {
     std::lock_guard<std::mutex> lock(mutex_);
     return latest_;
 }
@@ -175,7 +175,7 @@ void Serial::receiveLoop() {
             continue;
         }
 
-        // 2. 帧头对上，读满 12 字节负载（可能要多读几次凑齐）
+        // 2. 帧头对上，读满 16 字节负载
         int got = 0;
         while (got < kPayloadSize && running_) {
             ssize_t m = read(fd_, payload + got, kPayloadSize - got);
@@ -188,14 +188,15 @@ void Serial::receiveLoop() {
             break;   // running_ 被置 false，退出线程
         }
 
-        // 3. 小端 float32 直接 memcpy 成 yaw/pitch/roll
-        EulerAngles angles;
-        std::memcpy(&angles.yaw, payload + 0, 4);
-        std::memcpy(&angles.pitch, payload + 4, 4);
-        std::memcpy(&angles.roll, payload + 8, 4);
+        // 3. 小端 float32 直接 memcpy 成 w/x/y/z
+        Quaternion q;
+        std::memcpy(&q.w, payload + 0, 4);
+        std::memcpy(&q.x, payload + 4, 4);
+        std::memcpy(&q.y, payload + 8, 4);
+        std::memcpy(&q.z, payload + 12, 4);
 
         // 4. 存最新值，供主线程 latest() 取
         std::lock_guard<std::mutex> lock(mutex_);
-        latest_ = angles;
+        latest_ = q;
     }
 }

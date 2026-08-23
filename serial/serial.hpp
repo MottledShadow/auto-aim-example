@@ -15,26 +15,27 @@ struct SerialConfig {
     std::string flow_control = "none";  // none / hardware(RTS/CTS)
 };
 
-// STM32 发来的欧拉角（单位按 STM32 约定，这里只负责搬运，不做换算）
-struct EulerAngles {
-    float yaw = 0.0f;
-    float pitch = 0.0f;
-    float roll = 0.0f;
+// STM32 发来的四元数（分量顺序 w/x/y/z，这里只负责搬运，不做换算）
+struct Quaternion {
+    float w = 1.0f;
+    float x = 0.0f;
+    float y = 0.0f;
+    float z = 0.0f;
 };
 
-// 串口收：构造时读 yml → 打开并配置串口 → 起后台线程持续收 STM32 的欧拉角帧
-// 帧格式：帧头 0x5A + 3×float32(小端) = yaw/pitch/roll，无 CRC，定长 13 字节
+// 串口收：构造时读 yml → 打开并配置串口 → 起后台线程持续收 STM32 的四元数帧
+// 帧格式：帧头 0x5A + 4×float32(小端) = w/x/y/z，无 CRC，定长 17 字节
 // 配置路径写死在 serial.cpp（serial/config/serial_config.yml），要改参数直接改 yml
 class Serial {
 public:
     explicit Serial();
     ~Serial();
 
-    // 取最近一帧欧拉角（线程安全，供主线程调用）
-    EulerAngles latest();
+    // 取最近一帧四元数（线程安全，供主线程调用）
+    Quaternion latest();
 
 private:
-    // 后台线程体：按 0x5A 帧头同步 → 读定长负载 → 解析欧拉角 → 存最新值
+    // 后台线程体：按 0x5A 帧头同步 → 读定长负载 → 解析四元数 → 存最新值
     void receiveLoop();
 
     SerialConfig config_;
@@ -43,5 +44,5 @@ private:
     std::atomic<bool> running_{false};
 
     std::mutex mutex_;
-    EulerAngles latest_;
+    Quaternion latest_;
 };
