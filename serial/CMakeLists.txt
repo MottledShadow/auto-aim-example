@@ -2,6 +2,7 @@
 # serial.hpp 用 PUBLIC 暴露，下游 target 链接 serial 即自动拿到头文件搜索路径
 add_library(serial STATIC
     serial.cpp
+    crc.cpp
 )
 
 target_include_directories(serial PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")

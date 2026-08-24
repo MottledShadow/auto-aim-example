@@ -1,5 +1,7 @@
 #include "serial.hpp"
 
+#include "crc.hpp"
+
 #include <cerrno>
 #include <cstring>
 #include <iostream>
@@ -11,9 +13,11 @@
 
 #include <opencv2/core.hpp>
 
-// 帧头 0x5A，之后 4 个 float32 小端 = w/x/y/z
+// 帧头 0x5A，之后 4 个 float32 小端 = w/x/y/z，末尾 2 字节小端 CRC16
 static const unsigned char kFrameHeader = 0x5A;
 static const int kPayloadSize = 16;   // 4 × float32
+static const int kCrcSize = 2;        // CRC16，小端 2 字节
+static const int kFrameSize = 1 + kPayloadSize + kCrcSize;   // 帧头 + 负载 + CRC = 19
 
 // 把 yml 里的整数波特率映射成 termios 的 Bxxxx 常量
 static speed_t toBaudConstant(int baudrate) {
@@ -162,11 +166,12 @@ Quaternion Serial::latest() {
 }
 
 void Serial::receiveLoop() {
-    unsigned char payload[kPayloadSize];
+    // 整帧缓冲：frame[0] 帧头，frame[1..16] 负载，frame[17..18] CRC
+    std::uint8_t frame[kFrameSize];
 
     while (running_) {
         // 1. 逐字节找帧头 0x5A
-        unsigned char byte = 0;
+        std::uint8_t byte = 0;
         ssize_t n = read(fd_, &byte, 1);
         if (n <= 0) {
             continue;   // 超时没数据 / 读失败，重来
@@ -174,28 +179,35 @@ void Serial::receiveLoop() {
         if (byte != kFrameHeader) {
             continue;
         }
+        frame[0] = byte;
 
-        // 2. 帧头对上，读满 16 字节负载
+        // 2. 帧头对上，读满 负载 + CRC 共 18 字节到 frame + 1
         int got = 0;
-        while (got < kPayloadSize && running_) {
-            ssize_t m = read(fd_, payload + got, kPayloadSize - got);
+        const int rest = kPayloadSize + kCrcSize;
+        while (got < rest && running_) {
+            ssize_t m = read(fd_, frame + 1 + got, rest - got);
             if (m <= 0) {
                 continue;
             }
             got += m;
         }
-        if (got < kPayloadSize) {
+        if (got < rest) {
             break;   // running_ 被置 false，退出线程
         }
 
-        // 3. 小端 float32 直接 memcpy 成 w/x/y/z
-        Quaternion q;
-        std::memcpy(&q.w, payload + 0, 4);
-        std::memcpy(&q.x, payload + 4, 4);
-        std::memcpy(&q.y, payload + 8, 4);
-        std::memcpy(&q.z, payload + 12, 4);
+        // 3. CRC16 校验整帧（帧头+负载），错帧丢弃、回去重新找帧头
+        if (!crc::verify(frame, kFrameSize)) {
+            continue;
+        }
 
-        // 4. 存最新值，供主线程 latest() 取
+        // 4. 小端 float32 直接 memcpy 成 w/x/y/z（负载从 frame + 1 开始）
+        Quaternion q;
+        std::memcpy(&q.w, frame + 1 + 0, 4);
+        std::memcpy(&q.x, frame + 1 + 4, 4);
+        std::memcpy(&q.y, frame + 1 + 8, 4);
+        std::memcpy(&q.z, frame + 1 + 12, 4);
+
+        // 5. 存最新值，供主线程 latest() 取
         std::lock_guard<std::mutex> lock(mutex_);
         latest_ = q;
     }
