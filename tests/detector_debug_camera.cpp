@@ -71,15 +71,8 @@ int run()
         std::cerr << "calibration load failed: " << pnpSolver.error() << '\n';
     }
 
-    //初始化相机（打开设备并启动内部采集线程）
+    //构造即初始化（打开设备并启动内部采集线程），失败抛异常（由 main 的 try/catch 兜住）
     auto_aim::HikCamera camera;
-    int result = camera.initialize();
-    if (result != MV_OK)
-    {
-        std::cerr << "initialize failed: 0x"
-                  << std::hex << static_cast<unsigned int>(result) << '\n';
-        return 1;
-    }
 
     //两级流水线各一个最新帧槽：相机原图 → 处理产出（原图+全部中间产物，绘图留给显示线程）
     auto_aim::LatestSlot<auto_aim::FrameInput> slotRaw;
@@ -319,20 +312,13 @@ int run()
         }
     }
 
-    //收尾：置停止 → 唤醒并 join 两个线程 → 关窗口和相机
+    //收尾：置停止 → 唤醒并 join 两个线程 → 关窗口（相机析构时自动清理）
     slotRaw.stop();
     slotVis.stop();
     captureThread.join();
     processThread.join();
     cv::destroyAllWindows();
 
-    result = camera.shutdown();
-    if (result != MV_OK)
-    {
-        std::cerr << "shutdown failed: 0x"
-                  << std::hex << static_cast<unsigned int>(result) << '\n';
-        return 2;
-    }
     return 0;
 }
 

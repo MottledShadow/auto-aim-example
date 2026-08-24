@@ -3,6 +3,8 @@
 #include <chrono>
 #include <exception>
 #include <iostream>
+#include <sstream>
+#include <stdexcept>
 #include <system_error>
 #include <utility>
 
@@ -53,91 +55,65 @@ int convertToBgr(void* handle, const MV_FRAME_OUT& source, cv::Mat& destination)
 
 } // namespace
 
-HikCamera::~HikCamera()
+HikCamera::HikCamera(unsigned int nodeCount, float exposureTimeUs)
 {
-    shutdown();
-}
+    // 任一步失败：回滚已开的句柄/设备/SDK，再带步骤名+MV 码抛异常
+    auto check = [&](int code, const char* step) {
+        if (code != MV_OK)
+        {
+            cleanup();
+            std::ostringstream oss;
+            oss << "HikCamera " << step << " failed: 0x" << std::hex << static_cast<unsigned int>(code);
+            throw std::runtime_error(oss.str());
+        }
+    };
 
-int HikCamera::initialize(unsigned int nodeCount, float exposureTimeUs)
-{
-    if (sdkInitialized_ || handle_ != nullptr)
-    {
-        return MV_E_CALLORDER;
-    }
-
-    int result = MV_CC_Initialize();
-    if (result != MV_OK)
-    {
-        return result;
-    }
+    check(MV_CC_Initialize(), "MV_CC_Initialize");
     sdkInitialized_ = true;
 
     MV_CC_DEVICE_INFO_LIST deviceList{};
-    result = MV_CC_EnumDevices(MV_USB_DEVICE, &deviceList);
-    if (result == MV_OK &&
-        (deviceList.nDeviceNum == 0 || deviceList.pDeviceInfo[0] == nullptr))
+    check(MV_CC_EnumDevices(MV_USB_DEVICE, &deviceList), "MV_CC_EnumDevices");
+    if (deviceList.nDeviceNum == 0 || deviceList.pDeviceInfo[0] == nullptr)
     {
-        result = MV_E_NODATA;
-    }
-    if (result == MV_OK)
-    {
-        result = MV_CC_CreateHandle(&handle_, deviceList.pDeviceInfo[0]);
-    }
-    if (result == MV_OK)
-    {
-        result = MV_CC_OpenDevice(handle_);
-        deviceOpened_ = result == MV_OK;
-    }
-    if (result == MV_OK)
-    {
-        result = MV_CC_SetEnumValue(handle_, "ExposureAuto", 0);
-    }
-    if (result == MV_OK)
-    {
-        result = MV_CC_SetFloatValue(handle_, "ExposureTime", exposureTimeUs);
-    }
-    if (result == MV_OK)
-    {
-        result = MV_CC_SetEnumValue(handle_, "TriggerMode", 0);
-    }
-    if (result == MV_OK)
-    {
-        result = MV_CC_SetImageNodeNum(handle_, nodeCount);
-    }
-    if (result == MV_OK)
-    {
-        result = MV_CC_SetGrabStrategy(handle_, MV_GrabStrategy_LatestImagesOnly);
-    }
-    if (result == MV_OK)
-    {
-        result = MV_CC_StartGrabbing(handle_);
-        grabbing_ = result == MV_OK;
-    }
-    if (result == MV_OK)
-    {
-        stopCapture_ = false;
-        {
-            std::lock_guard<std::mutex> lock(frameMutex_);
-            latestFrame_ = {};
-            publishedFrame_ = 0;
-            consumedFrame_ = 0;
-            captureResult_ = MV_OK;
-        }
-        try
-        {
-            captureThread_ = std::thread(&HikCamera::captureLoop, this);
-        }
-        catch (const std::system_error&)
-        {
-            result = MV_E_RESOURCE_THREAD;
-        }
+        check(MV_E_NODATA, "EnumDevices(no device)");
     }
 
-    if (result != MV_OK)
+    check(MV_CC_CreateHandle(&handle_, deviceList.pDeviceInfo[0]), "MV_CC_CreateHandle");
+
+    check(MV_CC_OpenDevice(handle_), "MV_CC_OpenDevice");
+    deviceOpened_ = true;
+
+    check(MV_CC_SetEnumValue(handle_, "ExposureAuto", 0), "SetEnumValue(ExposureAuto)");
+    check(MV_CC_SetFloatValue(handle_, "ExposureTime", exposureTimeUs), "SetFloatValue(ExposureTime)");
+    check(MV_CC_SetEnumValue(handle_, "TriggerMode", 0), "SetEnumValue(TriggerMode)");
+    check(MV_CC_SetImageNodeNum(handle_, nodeCount), "MV_CC_SetImageNodeNum");
+    check(MV_CC_SetGrabStrategy(handle_, MV_GrabStrategy_LatestImagesOnly), "MV_CC_SetGrabStrategy");
+
+    check(MV_CC_StartGrabbing(handle_), "MV_CC_StartGrabbing");
+    grabbing_ = true;
+
+    // 起采集线程
+    stopCapture_ = false;
     {
-        shutdown();
+        std::lock_guard<std::mutex> lock(frameMutex_);
+        latestFrame_ = {};
+        publishedFrame_ = 0;
+        consumedFrame_ = 0;
+        captureResult_ = MV_OK;
     }
-    return result;
+    try
+    {
+        captureThread_ = std::thread(&HikCamera::captureLoop, this);
+    }
+    catch (const std::system_error&)
+    {
+        check(MV_E_RESOURCE_THREAD, "std::thread(captureLoop)");
+    }
+}
+
+HikCamera::~HikCamera()
+{
+    cleanup();
 }
 
 int HikCamera::capture(HikCameraFrame& frame, unsigned int timeoutMs)
@@ -239,10 +215,9 @@ void HikCamera::captureLoop()
     }
 }
 
-int HikCamera::shutdown()
+void HikCamera::cleanup()
 {
-    int result = MV_OK;
-
+    // 先停采集线程，再逐级回收；每步都判标志位，只回滚已完成的步骤
     stopCapture_ = true;
     frameReady_.notify_all();
     if (captureThread_.joinable())
@@ -251,38 +226,22 @@ int HikCamera::shutdown()
     }
     if (grabbing_)
     {
-        const int current = MV_CC_StopGrabbing(handle_);
-        if (result == MV_OK)
-        {
-            result = current;
-        }
+        MV_CC_StopGrabbing(handle_);
         grabbing_ = false;
     }
     if (deviceOpened_)
     {
-        const int current = MV_CC_CloseDevice(handle_);
-        if (result == MV_OK)
-        {
-            result = current;
-        }
+        MV_CC_CloseDevice(handle_);
         deviceOpened_ = false;
     }
     if (handle_ != nullptr)
     {
-        const int current = MV_CC_DestroyHandle(handle_);
-        if (result == MV_OK)
-        {
-            result = current;
-        }
+        MV_CC_DestroyHandle(handle_);
         handle_ = nullptr;
     }
     if (sdkInitialized_)
     {
-        const int current = MV_CC_Finalize();
-        if (result == MV_OK)
-        {
-            result = current;
-        }
+        MV_CC_Finalize();
         sdkInitialized_ = false;
     }
 
@@ -294,8 +253,6 @@ int HikCamera::shutdown()
         captureResult_ = MV_OK;
     }
     stopCapture_ = false;
-
-    return result;
 }
 
 } // namespace auto_aim

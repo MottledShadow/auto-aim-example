@@ -168,14 +168,8 @@ int runImages(const std::string& imagesDir)
 
 int runLive()
 {
+    // 构造即初始化，失败抛异常（由 main 的 try/catch 兜住）
     auto_aim::HikCamera camera;
-    const int initResult = camera.initialize();
-    if (initResult != MV_OK)
-    {
-        std::cerr << "initialize failed: 0x"
-                  << std::hex << static_cast<unsigned int>(initResult) << '\n';
-        return 1;
-    }
 
     std::vector<std::vector<cv::Point2f>> imagePoints;
     cv::Size imageSize;
@@ -253,7 +247,6 @@ int runLive()
     }
 
     cv::destroyAllWindows();
-    camera.shutdown();
     std::cout << "aborted, no file written\n";
     return 0;
 }

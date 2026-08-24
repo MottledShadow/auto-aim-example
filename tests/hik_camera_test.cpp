@@ -111,17 +111,11 @@ void printStats(const char* phase, const PhaseStats& stats)
 
 int run()
 {
+    // 构造即初始化，失败会抛异常
     auto_aim::HikCamera camera;
-    int result = camera.initialize();
-    if (result != MV_OK)
-    {
-        std::cerr << "initialize failed: 0x"
-                  << std::hex << static_cast<unsigned int>(result) << '\n';
-        return 1;
-    }
 
     PhaseStats warmup;
-    result = captureFrames(camera, false, kWarmupFrameCount, warmup);
+    int result = captureFrames(camera, false, kWarmupFrameCount, warmup);
     if (result != MV_OK)
     {
         return result;
@@ -144,13 +138,7 @@ int run()
     }
     printStats("preview", preview);
 
-    result = camera.shutdown();
-    if (result != MV_OK)
-    {
-        std::cerr << "shutdown failed: 0x"
-                  << std::hex << static_cast<unsigned int>(result) << '\n';
-        return 5;
-    }
+    // 相机析构时自动清理（停线程 + 回收句柄/设备/SDK）
     return 0;
 }
 

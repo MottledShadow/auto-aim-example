@@ -1,3 +1,4 @@
+#include <exception>
 #include <iostream>
 #include <string>
 
@@ -7,16 +8,10 @@
 #include "hik_camera.hpp"
 
 int main()
+try
 {
-    //初始化相机（打开设备并启动后台采集线程）
+    //构造即初始化（打开设备并启动后台采集线程），失败抛异常
     auto_aim::HikCamera camera;
-    int result = camera.initialize();
-    if (result != MV_OK)
-    {
-        std::cerr << "initialize failed: 0x"
-                  << std::hex << static_cast<unsigned int>(result) << '\n';
-        return 1;
-    }
 
     std::cout << "SPACE 拍照，q/ESC 退出\n";
 
@@ -26,12 +21,11 @@ int main()
     while (true)
     {
         //取最新一帧
-        result = camera.capture(frame);
+        int result = camera.capture(frame);
         if (result != MV_OK)
         {
             std::cerr << "capture failed: 0x"
                       << std::hex << static_cast<unsigned int>(result) << '\n';
-            camera.shutdown();
             return 2;
         }
 
@@ -55,8 +49,12 @@ int main()
         }
     }
 
-    //关闭窗口与相机
+    //关闭窗口，相机析构时自动清理
     cv::destroyAllWindows();
-    camera.shutdown();
     return 0;
+}
+catch (const std::exception& ex)
+{
+    std::cerr << "snapshot failed: " << ex.what() << '\n';
+    return 1;
 }

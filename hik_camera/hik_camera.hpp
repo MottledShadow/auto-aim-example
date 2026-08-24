@@ -28,21 +28,23 @@ struct HikCameraFrame
 class HikCamera
 {
 public:
-    HikCamera() = default;
+    // RAII：构造时跑完整条 MV_CC 初始化链并起采集线程，任一步失败即抛 std::runtime_error
+    explicit HikCamera(
+        unsigned int nodeCount = kDefaultHikImageNodeCount,
+        float exposureTimeUs = kDefaultHikExposureTimeUs);
     ~HikCamera();
 
     HikCamera(const HikCamera&) = delete;
     HikCamera& operator=(const HikCamera&) = delete;
 
-    int initialize(
-        unsigned int nodeCount = kDefaultHikImageNodeCount,
-        float exposureTimeUs = kDefaultHikExposureTimeUs);
+    // 取一帧，逐帧返回 MV 码（MV_OK / 超时 MV_E_NODATA / 采集线程已出错）
     int capture(
         HikCameraFrame& frame,
         unsigned int timeoutMs = kDefaultHikFrameTimeoutMs);
-    int shutdown();
 
 private:
+    // 停线程 + 逐级回收句柄/设备/SDK，构造失败回滚与析构共用
+    void cleanup();
     int grabFrame(HikCameraFrame& frame, unsigned int timeoutMs);
     void captureLoop();
 
