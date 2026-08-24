@@ -9,6 +9,6 @@ add_library(detector STATIC
 
 target_include_directories(detector PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/inc")
 
-target_link_libraries(detector PUBLIC ${OpenCV_LIBS})
+target_link_libraries(detector PUBLIC ${OpenCV_LIBS} Threads::Threads)
 
 target_compile_options(detector PRIVATE -Wall -Wextra -Wpedantic)
