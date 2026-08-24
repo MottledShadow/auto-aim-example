@@ -9,7 +9,8 @@
 namespace auto_aim
 {
 
-//最新帧槽：只保最新一份，被覆盖写入。序号变化即代表有新数据（和相机的 LatestImagesOnly 一致）
+//最新值槽：只保最新一份，被覆盖写入。序号变化即代表有新数据（和相机的 LatestImagesOnly 一致）
+//生产者线程 publish()，消费者要么阻塞 wait()（按序号），要么非阻塞 latest() 取当前副本
 template <typename T>
 struct LatestSlot
 {
@@ -42,6 +43,13 @@ struct LatestSlot
         out = payload;
         consumed = seq;
         return true;
+    }
+
+    //消费者：非阻塞取当前最新值副本（没 publish 过则为默认构造值）
+    T latest()
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        return payload;
     }
 
     //置停止并唤醒所有等待者

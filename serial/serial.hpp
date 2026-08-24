@@ -1,9 +1,9 @@
 #pragma once
 
-#include <atomic>
-#include <mutex>
 #include <string>
 #include <thread>
+
+#include "latest_slot.hpp"
 
 // 串口连接参数（从 serial_config.yml 读）
 struct SerialConfig {
@@ -42,8 +42,7 @@ private:
     SerialConfig config_;
     int fd_ = -1;
     std::thread thread_;
-    std::atomic<bool> running_{false};
 
-    std::mutex mutex_;
-    Quaternion latest_;
+    // 最新四元数槽：后台线程 publish、主线程 latest() 取（Serial 是全局命名空间，显式限定 auto_aim::）
+    auto_aim::LatestSlot<Quaternion> slot_;
 };

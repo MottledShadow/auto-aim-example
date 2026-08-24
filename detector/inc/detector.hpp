@@ -1,8 +1,6 @@
 #pragma once
 
-#include <atomic>
 #include <functional>
-#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -10,6 +8,7 @@
 #include <opencv2/core.hpp>
 
 #include "detector_types.hpp"
+#include "latest_slot.hpp"
 #include "lightbar_detector.hpp"
 #include "number_classifier.hpp"
 #include "pnp_solver.hpp"
@@ -46,10 +45,9 @@ private:
 
     FrameSource source_;
     std::thread thread_;
-    std::atomic<bool> running_{false};
 
-    std::mutex mutex_;
-    DetectionResult latest_;
+    // 最新识别结果槽：后台线程 publish、主线程 latest() 取
+    LatestSlot<DetectionResult> slot_;
 
     // 完整识别流水线：预处理 → 灯条筛选 → 装甲配对 → 数字分类 → PnP
     // 入参 FrameInput 带图像+时间戳+IMU 四元数；返回 DetectionResult，把时间戳/四元数原样透传给追踪器

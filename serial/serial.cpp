@@ -144,14 +144,13 @@ Serial::Serial() : config_(loadSerialConfig()) {
 
     std::cout << "UART opened: " << config_.device << " @ " << config_.baudrate << '\n';
 
-    // 10. 起后台接收线程
-    running_ = true;
+    // 10. 起后台接收线程（slot_.running 默认 true）
     thread_ = std::thread(&Serial::receiveLoop, this);
 }
 
 Serial::~Serial() {
     // 停线程 → 等它退出 → 关串口
-    running_ = false;
+    slot_.stop();
     if (thread_.joinable()) {
         thread_.join();
     }
@@ -161,15 +160,14 @@ Serial::~Serial() {
 }
 
 Quaternion Serial::latest() {
-    std::lock_guard<std::mutex> lock(mutex_);
-    return latest_;
+    return slot_.latest();
 }
 
 void Serial::receiveLoop() {
     // 整帧缓冲：frame[0] 帧头，frame[1..16] 负载，frame[17..18] CRC
     std::uint8_t frame[kFrameSize];
 
-    while (running_) {
+    while (slot_.running) {
         // 1. 逐字节找帧头 0x5A
         std::uint8_t byte = 0;
         ssize_t n = read(fd_, &byte, 1);
@@ -184,7 +182,7 @@ void Serial::receiveLoop() {
         // 2. 帧头对上，读满 负载 + CRC 共 18 字节到 frame + 1
         int got = 0;
         const int rest = kPayloadSize + kCrcSize;
-        while (got < rest && running_) {
+        while (got < rest && slot_.running) {
             ssize_t m = read(fd_, frame + 1 + got, rest - got);
             if (m <= 0) {
                 continue;
@@ -192,7 +190,7 @@ void Serial::receiveLoop() {
             got += m;
         }
         if (got < rest) {
-            break;   // running_ 被置 false，退出线程
+            break;   // slot_.running 被置 false，退出线程
         }
 
         // 3. CRC16 校验整帧（帧头+负载），错帧丢弃、回去重新找帧头
@@ -208,7 +206,6 @@ void Serial::receiveLoop() {
         std::memcpy(&q.z, frame + 1 + 12, 4);
 
         // 5. 存最新值，供主线程 latest() 取
-        std::lock_guard<std::mutex> lock(mutex_);
-        latest_ = q;
+        slot_.publish(q);
     }
 }

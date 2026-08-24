@@ -5,7 +5,7 @@ add_library(serial STATIC
     crc.cpp
 )
 
-target_include_directories(serial PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+target_include_directories(serial PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}" "${PROJECT_SOURCE_DIR}/common")
 
 # 读配置用 cv::FileStorage → 链 OpenCV；后台接收线程 → 链 Threads
 target_link_libraries(serial PUBLIC ${OpenCV_LIBS} Threads::Threads)

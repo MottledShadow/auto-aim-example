@@ -12,14 +12,13 @@ Detector::Detector(FrameSource source)
     , source_(std::move(source))
 {
     //起后台识别线程
-    running_ = true;
     thread_ = std::thread(&Detector::detectLoop, this);
 }
 
 Detector::~Detector()
 {
     //停线程 → 等它退出
-    running_ = false;
+    slot_.stop();
     if (thread_.joinable())
     {
         thread_.join();
@@ -49,7 +48,7 @@ DetectionResult Detector::detect(const FrameInput& input)
 
 void Detector::detectLoop()
 {
-    while (running_)
+    while (slot_.running)
     {
         //1. 帧源取一帧，暂时没帧就重来（语义同 Serial 里 read()<=0）
         FrameInput input;
@@ -62,15 +61,13 @@ void Detector::detectLoop()
         DetectionResult result = detect(input);
 
         //3. 存最新结果，供主线程 latest() 取
-        std::lock_guard<std::mutex> lock(mutex_);
-        latest_ = std::move(result);
+        slot_.publish(std::move(result));
     }
 }
 
 DetectionResult Detector::latest()
 {
-    std::lock_guard<std::mutex> lock(mutex_);
-    return latest_;
+    return slot_.latest();
 }
 
 } // namespace auto_aim
