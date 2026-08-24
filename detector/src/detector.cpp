@@ -1,5 +1,6 @@
 #include "detector.hpp"
 
+#include <stdexcept>
 #include <utility>
 
 namespace auto_aim
@@ -11,6 +12,12 @@ Detector::Detector(FrameSource source)
     , pnpSolver_(PnpSolverParams{})
     , source_(std::move(source))
 {
+    //模型/标定任一加载失败即 fail-fast，别让线程空转出不了结果
+    if (!error().empty())
+    {
+        throw std::runtime_error("Detector init failed: " + error());
+    }
+
     //起后台识别线程
     thread_ = std::thread(&Detector::detectLoop, this);
 }

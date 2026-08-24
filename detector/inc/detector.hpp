@@ -32,8 +32,20 @@ public:
     // 取最近一帧识别结果
     DetectionResult latest();
 
-    // 分类模型加载失败原因，空表示成功
-    const std::string& error() const { return classifier_.error(); }
+    // 分类模型 + 标定加载失败原因，空表示都成功
+    std::string error() const
+    {
+        std::string merged = classifier_.error();
+        if (!pnpSolver_.error().empty())
+        {
+            if (!merged.empty())
+            {
+                merged += "; ";
+            }
+            merged += pnpSolver_.error();
+        }
+        return merged;
+    }
 
 private:
     // 后台线程体：帧源取帧 → 跑完整流水线 → 存最新结果
