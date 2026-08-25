@@ -11,8 +11,6 @@
 #include <termios.h>
 #include <unistd.h>
 
-#include <opencv2/core.hpp>
-
 // 帧头 0x5A，之后 4 个 float32 小端 = w/x/y/z，末尾 2 字节小端 CRC16
 static const unsigned char kFrameHeader = 0x5A;
 static const int kPayloadSize = 16;   // 4 × float32
@@ -32,42 +30,7 @@ static speed_t toBaudConstant(int baudrate) {
     }
 }
 
-// 用 cv::FileStorage 读串口配置
-static SerialConfig loadSerialConfig() {
-    const std::string path = "serial/config/serial_config.yml";
-    SerialConfig config;
-
-    // 打开 OpenCV YAML，读不到就抛异常
-    cv::FileStorage storage(path, cv::FileStorage::READ);
-    if (!storage.isOpened()) {
-        throw std::runtime_error("cannot open serial config: " + path);
-    }
-
-    // 逐项读，缺哪项就沿用结构体默认值
-    if (!storage["device"].empty()) {
-        storage["device"] >> config.device;
-    }
-    if (!storage["baudrate"].empty()) {
-        storage["baudrate"] >> config.baudrate;
-    }
-    if (!storage["data_bits"].empty()) {
-        storage["data_bits"] >> config.data_bits;
-    }
-    if (!storage["parity"].empty()) {
-        storage["parity"] >> config.parity;
-    }
-    if (!storage["stop_bits"].empty()) {
-        storage["stop_bits"] >> config.stop_bits;
-    }
-    if (!storage["flow_control"].empty()) {
-        storage["flow_control"] >> config.flow_control;
-    }
-
-    return config;
-}
-
-// 初始化列表里直接用返回值构造 config_
-Serial::Serial() : config_(loadSerialConfig()) {
+Serial::Serial() {
     // 1. 打开串口
     fd_ = open(config_.device.c_str(), O_RDWR | O_NOCTTY);
     if (fd_ < 0) {
