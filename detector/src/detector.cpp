@@ -6,6 +6,12 @@
 namespace auto_aim
 {
 
+namespace
+{
+// PnP 输入选择：0 = 未分类的配对装甲，1 = 数字分类过滤后的装甲
+constexpr int kPnPInputMode = 0;
+}
+
 //三件套各自默认参数 + 存下帧源回调
 Detector::Detector(FrameSource source)
     : classifier_(NumberClassifierParams{})
@@ -47,7 +53,8 @@ DetectionResult Detector::detect(const FrameInput& input)
     const std::vector<Armor> classified = classifier_.classify(input.image, armors);
 
     //解位姿
-    const std::vector<Armor> solved = pnpSolver_.solve(classified);
+    const std::vector<Armor> solved =
+        kPnPInputMode == 0 ? pnpSolver_.solve(armors) : pnpSolver_.solve(classified);
 
     //打包结果，把取帧时刻的时间戳/四元数原样透传给追踪器
     return DetectionResult{solved, input.timestamp, input.quaternion};
