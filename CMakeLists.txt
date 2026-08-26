@@ -40,60 +40,6 @@ add_subdirectory(tracker)
 # serial 模块（静态库）：串口收 STM32 四元数，附带 serial_recv_test / serial_test 两个冒烟测试
 add_subdirectory(serial)
 
-add_executable(hik_camera_test
-    tests/hik_camera_test.cpp
-    hik_camera/hik_camera.cpp
-)
-
-target_include_directories(hik_camera_test
-    PRIVATE
-        "${PROJECT_SOURCE_DIR}/hik_camera"
-        "${MVCAM_INCLUDE_DIR}"
-)
-
-target_link_libraries(hik_camera_test
-    PRIVATE
-        ${OpenCV_LIBS}
-        "${MVCAM_LIBRARY}"
-        Threads::Threads
-)
-
-target_compile_options(hik_camera_test PRIVATE -Wall -Wextra -Wpedantic)
-
-set_target_properties(hik_camera_test
-    PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}"
-        BUILD_RPATH "${MVCAM_LIBRARY_DIR}"
-        INSTALL_RPATH "${MVCAM_LIBRARY_DIR}"
-)
-
-add_executable(snapshot
-    tools/snapshot.cpp
-    hik_camera/hik_camera.cpp
-)
-
-target_include_directories(snapshot
-    PRIVATE
-        "${PROJECT_SOURCE_DIR}/hik_camera"
-        "${MVCAM_INCLUDE_DIR}"
-)
-
-target_link_libraries(snapshot
-    PRIVATE
-        ${OpenCV_LIBS}
-        "${MVCAM_LIBRARY}"
-        Threads::Threads
-)
-
-target_compile_options(snapshot PRIVATE -Wall -Wextra -Wpedantic)
-
-set_target_properties(snapshot
-    PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}"
-        BUILD_RPATH "${MVCAM_LIBRARY_DIR}"
-        INSTALL_RPATH "${MVCAM_LIBRARY_DIR}"
-)
-
 # 手眼标定用 Eigen 把 IMU 四元数转旋转矩阵，链 serial 取云台朝向（serial 以 PUBLIC 暴露头文件路径）
 find_package(Eigen3 3.4 REQUIRED NO_MODULE)
 
@@ -120,61 +66,6 @@ target_link_libraries(calibrate_camera
 target_compile_options(calibrate_camera PRIVATE -Wall -Wextra -Wpedantic)
 
 set_target_properties(calibrate_camera
-    PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}"
-        BUILD_RPATH "${MVCAM_LIBRARY_DIR}"
-        INSTALL_RPATH "${MVCAM_LIBRARY_DIR}"
-)
-
-# 识别器离线调试工具（读磁盘图片）：一次跑完整流水线、每图一目录输出五阶段标注图，只依赖 OpenCV，不链接相机 SDK
-add_executable(detector_debug_file
-    tests/detector_debug_file.cpp
-    debug_draw/debug_draw.cpp
-)
-
-target_include_directories(detector_debug_file
-    PRIVATE
-        "${PROJECT_SOURCE_DIR}/debug_draw"
-)
-
-target_link_libraries(detector_debug_file
-    PRIVATE
-        detector
-        ${OpenCV_LIBS}
-)
-
-target_compile_options(detector_debug_file PRIVATE -Wall -Wextra -Wpedantic)
-
-set_target_properties(detector_debug_file
-    PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}"
-)
-
-# 识别器在线调试工具（接相机实时）：每帧跑完整流水线 → 单窗口按 1-5 键切换/叠加各阶段标注层（取帧/处理/显示 各一线程）
-add_executable(detector_debug_camera
-    tests/detector_debug_camera.cpp
-    hik_camera/hik_camera.cpp
-    debug_draw/debug_draw.cpp
-)
-
-target_include_directories(detector_debug_camera
-    PRIVATE
-        "${PROJECT_SOURCE_DIR}/hik_camera"
-        "${PROJECT_SOURCE_DIR}/debug_draw"
-        "${MVCAM_INCLUDE_DIR}"
-)
-
-target_link_libraries(detector_debug_camera
-    PRIVATE
-        detector
-        ${OpenCV_LIBS}
-        "${MVCAM_LIBRARY}"
-        Threads::Threads
-)
-
-target_compile_options(detector_debug_camera PRIVATE -Wall -Wextra -Wpedantic)
-
-set_target_properties(detector_debug_camera
     PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}"
         BUILD_RPATH "${MVCAM_LIBRARY_DIR}"
