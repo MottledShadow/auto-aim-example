@@ -12,6 +12,16 @@ target_link_libraries(serial PUBLIC Threads::Threads)
 
 target_compile_options(serial PRIVATE -Wall -Wextra -Wpedantic)
 
-# tests/CMakeLists.txt 分两种模式：交叉构建里只编 serial_recv_test 冒烟测试；
-# 独立跑（serial/crc-test-run.sh）才是 crc 离线 gtest 单测，不进本交叉构建。
-add_subdirectory(tests)
+# 连真实 STM32 的接收冒烟测试（不是离线单测）：只在交叉构建树里编，跑在 Jetson 上（见 serial/serial-recv-run.sh）
+add_executable(serial_recv_test
+    tests/serial_recv_test.cpp
+)
+
+target_link_libraries(serial_recv_test PRIVATE serial)
+
+target_compile_options(serial_recv_test PRIVATE -Wall -Wextra -Wpedantic)
+
+set_target_properties(serial_recv_test PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}")
+
+# crc 离线单测是 tests/ 下的独立 project，本机原生跑（见 serial/crc-test-run.sh），不进本交叉构建。
