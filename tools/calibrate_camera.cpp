@@ -22,6 +22,7 @@ namespace
 constexpr int kRequiredViews = 20;
 constexpr std::size_t kRequiredHandEyeViews = 15;
 constexpr double kSquareSize = 5.0;
+constexpr double kMaxViewError = 1.0;  // 单张重投影误差(px)超过此值视为离群，剔除后重标
 constexpr char kOutputPath[] = "config/camera_calibration.yml";
 constexpr char kHandEyeOutputPath[] = "config/hand_eye_calibration.yml";
 const cv::Size kPatternSize(11, 8);
@@ -85,11 +86,54 @@ int calibrateAndSave(
     const std::vector<cv::Point3f> object = makeObjectPoints();
     const std::vector<std::vector<cv::Point3f>> objectPoints(imagePoints.size(), object);
 
-    const double rms = cv::calibrateCamera(
+    // 首次标定：额外要每张视图的重投影误差，用来定位离群张
+    std::vector<cv::Mat> rvecs;
+    std::vector<cv::Mat> tvecs;
+    cv::Mat perViewErrors;
+    double rms = cv::calibrateCamera(
         objectPoints, imagePoints, imageSize, cameraMatrix, distCoeffs,
-        cv::noArray(), cv::noArray());
+        rvecs, tvecs, cv::noArray(), cv::noArray(), perViewErrors);
 
-    std::cout << "views=" << imagePoints.size()
+    // 打印每张视图误差，一眼看出是个别糊帧拖垮还是整体都差
+    std::cout << "rms_reproj_error=" << rms << " px, per-view:\n";
+    for (int i = 0; i < perViewErrors.rows; ++i)
+    {
+        std::cout << "  view " << i << " = " << perViewErrors.at<double>(i) << " px\n";
+    }
+
+    // 剔除超阈值的离群张；剩下的仍够数就用干净子集重标一次
+    std::vector<std::vector<cv::Point2f>> kept;
+    for (int i = 0; i < perViewErrors.rows; ++i)
+    {
+        if (perViewErrors.at<double>(i) <= kMaxViewError)
+        {
+            kept.push_back(imagePoints[static_cast<std::size_t>(i)]);
+        }
+        else
+        {
+            std::cout << "drop view " << i << " (" << perViewErrors.at<double>(i)
+                      << " px > " << kMaxViewError << " px)\n";
+        }
+    }
+
+    std::size_t usedViews = imagePoints.size();
+    if (kept.size() < imagePoints.size() && kept.size() >= kRequiredViews)
+    {
+        const std::vector<std::vector<cv::Point3f>> keptObject(kept.size(), object);
+        rms = cv::calibrateCamera(
+            keptObject, kept, imageSize, cameraMatrix, distCoeffs,
+            cv::noArray(), cv::noArray());
+        usedViews = kept.size();
+        std::cout << "recalibrated on " << usedViews << " clean views, rms_reproj_error="
+                  << rms << " px\n";
+    }
+    else if (kept.size() < kRequiredViews)
+    {
+        std::cout << "after dropping outliers only " << kept.size() << " views left (< "
+                  << kRequiredViews << "); keeping all views, consider retaking\n";
+    }
+
+    std::cout << "views=" << usedViews
               << " size=" << imageSize.width << 'x' << imageSize.height
               << " rms_reproj_error=" << rms << " px\n"
               << "camera_matrix=\n" << cameraMatrix << '\n'
