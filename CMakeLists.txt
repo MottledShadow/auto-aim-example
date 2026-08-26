@@ -67,3 +67,28 @@ set_target_properties(calibrate_camera
         BUILD_RPATH "${MVCAM_LIBRARY_DIR}"
         INSTALL_RPATH "${MVCAM_LIBRARY_DIR}"
 )
+
+# 全链路集成测试：相机 → 识别 → 坐标变换 → 串口发送 + 屏幕显示
+add_executable(full_chain_test
+    full_chain_test.cpp
+)
+
+# hik_camera/detector/tracker/serial 都 PUBLIC 暴露各自头文件路径与依赖，链这四个即足够
+# (tracker PUBLIC 链 detector，故拿得到 CoordinateTransform/TrackedArmor；Eigen 由 tracker 内部 PRIVATE 用)
+target_link_libraries(full_chain_test
+    PRIVATE
+        hik_camera
+        detector
+        tracker
+        serial
+        ${OpenCV_LIBS}
+)
+
+target_compile_options(full_chain_test PRIVATE -Wall -Wextra -Wpedantic)
+
+set_target_properties(full_chain_test
+    PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}"
+        BUILD_RPATH "${MVCAM_LIBRARY_DIR}"
+        INSTALL_RPATH "${MVCAM_LIBRARY_DIR}"
+)
