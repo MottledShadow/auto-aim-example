@@ -5,8 +5,8 @@
 namespace auto_aim
 {
 
-Tracker::Tracker(const CameraToWorldParams& params)
-    : transform_(params)
+Tracker::Tracker()
+    : transform_()
 {
 }
 

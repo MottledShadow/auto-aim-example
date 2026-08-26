@@ -39,7 +39,11 @@ int run()
     // 1. 构造三件套（RAII，失败抛异常）：相机 + 串口(后台在收四元数) + 坐标变换
     auto_aim::HikCamera camera;
     Serial serial;
-    auto_aim::CoordinateTransform transform;   // 默认外参(零平移)，只用 IMU 四元数 + 固定光学系重映射
+    auto_aim::CoordinateTransform transform;   // 构造时自读手眼标定(config/hand_eye_calibration.yml)
+    if (!transform.error().empty())
+    {
+        std::cerr << "warning: 未加载手眼标定，回退到几何重映射: " << transform.error() << '\n';
+    }
 
     // 2. 共享图槽：识别线程取帧时把这帧图存进来，主线程画图时取最新
     auto_aim::LatestSlot<cv::Mat> frameSlot;

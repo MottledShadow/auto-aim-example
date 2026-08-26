@@ -28,6 +28,14 @@ scp "$binary" "$target:$remote_dir/full_chain_test"
 scp "$project_dir/hik_camera/config/camera_calibration.yml" "$target:$remote_dir/config/"
 scp "$project_dir/detector/model/mlp.onnx" "$project_dir/detector/model/label.txt" "$target:$remote_dir/model/"
 
+# 手眼标定(坐标变换要用)：标定后取回开发机 config/ 的那份；没有就跳过，坐标变换回退到几何重映射
+if [ -f "$project_dir/config/hand_eye_calibration.yml" ]; then
+    scp "$project_dir/config/hand_eye_calibration.yml" "$target:$remote_dir/config/"
+else
+    echo "  warning: 开发机没有 config/hand_eye_calibration.yml，坐标变换将回退到几何重映射(不吃手眼)"
+    echo "           先跑 tools/cross-handeye-run.sh 标定并取回，再重跑本脚本"
+fi
+
 echo "Running full chain on Jetson (窗口显示在 Jetson 屏幕, ESC 退出)..."
 echo "  画面: 框出识别到的装甲板(选中块黄色粗线)，标数字/置信度与选中块世界系 x/y/z(mm)"
 echo "  左上: send detected 标志 + 发送坐标 + 实时四元数"

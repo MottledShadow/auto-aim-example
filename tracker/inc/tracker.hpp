@@ -16,7 +16,7 @@ namespace auto_aim
 class Tracker
 {
 public:
-    explicit Tracker(const CameraToWorldParams& params = {});
+    explicit Tracker();
 
     // 追踪主流程：坐标变换 → 首帧初始化 / 后续帧预测+匹配+更新
     // 入参 DetectionResult 带相机系装甲板 + 时间戳(设备 tick) + IMU 四元数；
