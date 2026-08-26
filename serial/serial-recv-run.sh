@@ -12,7 +12,7 @@ target="jetson"
 project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 build_dir="$project_dir/build/cross"
 binary="$build_dir/serial_recv_test"
-remote_dir="serial-recv"
+remote_dir="auto-aim"
 
 echo "Configuring ARM64 build..."
 cmake -S "$project_dir" -B "$build_dir" \

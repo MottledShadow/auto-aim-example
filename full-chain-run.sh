@@ -6,12 +6,15 @@ set -euo pipefail
 # 前置条件：
 #   - 相机接好；串口接到 /dev/ttyTHS1，STM32 按 0x5A 帧发四元数、按 0xA5 16 字节帧收目标
 #   - SSH 里配好名为 jetson 的主机别名
-# detector 按相对 cwd 读 config/camera_calibration.yml 与 model/{mlp.onnx,label.txt}，故一并推过去
+#   - 先跑过 tools/cross-handeye-run.sh：标定结果(内参+手眼)会写进共享 ~/auto-aim/config/
+#   - 模型已常驻 Jetson ~/auto-aim/model/{mlp.onnx,label.txt}
+# detector 按相对 cwd 读 config/camera_calibration.yml 与 model/{mlp.onnx,label.txt}。
+# 这些运行时依赖(标定+模型)都常驻 Jetson 共享 config/ 和 model/，本脚本只推二进制，都不推。
 target="jetson"
 project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 build_dir="$project_dir/build/cross"
 binary="$build_dir/full_chain_test"
-remote_dir="full-chain"
+remote_dir="auto-aim"
 
 echo "Configuring ARM64 build..."
 cmake -S "$project_dir" -B "$build_dir" \
@@ -21,19 +24,16 @@ echo "Building full_chain_test..."
 cmake --build "$build_dir" --target full_chain_test --parallel
 
 echo "Preparing Jetson directory..."
-ssh "$target" "mkdir -p \"\$HOME/$remote_dir/config\" \"\$HOME/$remote_dir/model\""
+ssh "$target" "mkdir -p \"\$HOME/$remote_dir\""
 
-echo "Deploying binary + runtime deps (calibration + model)..."
+echo "Deploying binary..."
 scp "$binary" "$target:$remote_dir/full_chain_test"
-scp "$project_dir/hik_camera/config/camera_calibration.yml" "$target:$remote_dir/config/"
-scp "$project_dir/detector/model/mlp.onnx" "$project_dir/detector/model/label.txt" "$target:$remote_dir/model/"
 
-# 手眼标定(坐标变换要用)：标定后取回开发机 config/ 的那份；没有就跳过，坐标变换回退到几何重映射
-if [ -f "$project_dir/config/hand_eye_calibration.yml" ]; then
-    scp "$project_dir/config/hand_eye_calibration.yml" "$target:$remote_dir/config/"
-else
-    echo "  warning: 开发机没有 config/hand_eye_calibration.yml，坐标变换将回退到几何重映射(不吃手眼)"
-    echo "           先跑 tools/cross-handeye-run.sh 标定并取回，再重跑本脚本"
+# 标定与模型都不推：config 靠先跑 tools/cross-handeye-run.sh 生成，model 常驻 Jetson。
+# 缺了 full_chain_test 会读不到内参/模型起不来，先探测提示。
+if ! ssh "$target" "test -f \"\$HOME/$remote_dir/config/camera_calibration.yml\" && test -f \"\$HOME/$remote_dir/model/mlp.onnx\""; then
+    echo "  warning: Jetson ~/$remote_dir 缺 config/camera_calibration.yml 或 model/mlp.onnx"
+    echo "           config 先跑 tools/cross-handeye-run.sh 标定生成；model 需常驻 ~/$remote_dir/model"
 fi
 
 echo "Running full chain on Jetson (窗口显示在 Jetson 屏幕, ESC 退出)..."

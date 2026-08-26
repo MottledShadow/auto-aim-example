@@ -7,7 +7,7 @@ target="jetson"
 project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 build_dir="$project_dir/build/cross"
 binary="$build_dir/calibrate_camera"
-remote_dir="cross-handeye"
+remote_dir="auto-aim"
 
 echo "Configuring ARM64 build..."
 cmake -S "$project_dir" -B "$build_dir" \
@@ -39,5 +39,5 @@ XDG_RUNTIME_DIR=\"\$runtime_dir\" \
 ./calibrate_camera
 "
 
-echo "标定结果在 Jetson: ~/$remote_dir/config/{camera_calibration,hand_eye_calibration}.yml"
-echo "取回开发机: scp $target:$remote_dir/config/hand_eye_calibration.yml $project_dir/config/"
+echo "标定结果在 Jetson 共享 config: ~/$remote_dir/config/{camera_calibration,hand_eye_calibration}.yml"
+echo "full-chain-run.sh 直接读这份共享 config，无需取回开发机再推"
