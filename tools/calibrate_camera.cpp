@@ -1,3 +1,5 @@
+#include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <filesystem>
 #include <iostream>
@@ -6,6 +8,7 @@
 #include <vector>
 
 #include <Eigen/Geometry>
+#include <Eigen/SVD>
 #include <opencv2/calib3d.hpp>
 #include <opencv2/core.hpp>
 #include <opencv2/core/eigen.hpp>
@@ -23,6 +26,8 @@ constexpr int kRequiredViews = 20;
 constexpr std::size_t kRequiredHandEyeViews = 15;
 constexpr double kSquareSize = 5.0;
 constexpr double kMaxViewError = 1.0;  // 单张重投影误差(px)超过此值视为离群，剔除后重标
+constexpr double kMaxHandEyeRotError = 1.0;     // 单位姿棋盘→世界旋转偏差(度)超此值视为离群
+constexpr double kMaxHandEyeTransError = 10.0;  // 单位姿棋盘→世界平移偏差(mm)超此值视为离群
 constexpr char kOutputPath[] = "config/camera_calibration.yml";
 constexpr char kHandEyeOutputPath[] = "config/hand_eye_calibration.yml";
 const cv::Size kPatternSize(11, 8);
@@ -70,19 +75,15 @@ void refineCorners(const cv::Mat& gray, std::vector<cv::Point2f>& corners)
         cv::TermCriteria(cv::TermCriteria::EPS + cv::TermCriteria::MAX_ITER, 30, 0.001));
 }
 
-int calibrateAndSave(
-    const std::vector<std::vector<cv::Point2f>>& imagePoints,
+// 标定并保存内参。imagePoints 会被就地裁成「重投影误差达标」的子集：
+// 达标张数够(>=kRequiredViews)就用干净子集重标+保存并返回 true；
+// 不够则返回 false，让调用方继续采图补齐。
+bool calibrateAndSave(
+    std::vector<std::vector<cv::Point2f>>& imagePoints,
     cv::Size imageSize,
     cv::Mat& cameraMatrix,
     cv::Mat& distCoeffs)
 {
-    if (imagePoints.size() < kRequiredViews)
-    {
-        std::cerr << "need at least " << kRequiredViews
-                  << " detected views to calibrate, got " << imagePoints.size() << '\n';
-        return 1;
-    }
-
     const std::vector<cv::Point3f> object = makeObjectPoints();
     const std::vector<std::vector<cv::Point3f>> objectPoints(imagePoints.size(), object);
 
@@ -101,7 +102,7 @@ int calibrateAndSave(
         std::cout << "  view " << i << " = " << perViewErrors.at<double>(i) << " px\n";
     }
 
-    // 剔除超阈值的离群张；剩下的仍够数就用干净子集重标一次
+    // 只保留误差达标的视图，原地更新 imagePoints；被剔的打印出来
     std::vector<std::vector<cv::Point2f>> kept;
     for (int i = 0; i < perViewErrors.rows; ++i)
     {
@@ -115,25 +116,23 @@ int calibrateAndSave(
                       << " px > " << kMaxViewError << " px)\n";
         }
     }
+    imagePoints = kept;
 
-    std::size_t usedViews = imagePoints.size();
-    if (kept.size() < imagePoints.size() && kept.size() >= kRequiredViews)
+    // 达标的不够，别标定别保存，回去继续采图补齐
+    if (imagePoints.size() < kRequiredViews)
     {
-        const std::vector<std::vector<cv::Point3f>> keptObject(kept.size(), object);
-        rms = cv::calibrateCamera(
-            keptObject, kept, imageSize, cameraMatrix, distCoeffs,
-            cv::noArray(), cv::noArray());
-        usedViews = kept.size();
-        std::cout << "recalibrated on " << usedViews << " clean views, rms_reproj_error="
-                  << rms << " px\n";
-    }
-    else if (kept.size() < kRequiredViews)
-    {
-        std::cout << "after dropping outliers only " << kept.size() << " views left (< "
-                  << kRequiredViews << "); keeping all views, consider retaking\n";
+        std::cout << "clean views " << imagePoints.size() << "/" << kRequiredViews
+                  << ", keep capturing\n";
+        return false;
     }
 
-    std::cout << "views=" << usedViews
+    // 用干净子集重标一次，这才是要保存的内参
+    const std::vector<std::vector<cv::Point3f>> keptObject(imagePoints.size(), object);
+    rms = cv::calibrateCamera(
+        keptObject, imagePoints, imageSize, cameraMatrix, distCoeffs,
+        cv::noArray(), cv::noArray());
+
+    std::cout << "views=" << imagePoints.size()
               << " size=" << imageSize.width << 'x' << imageSize.height
               << " rms_reproj_error=" << rms << " px\n"
               << "camera_matrix=\n" << cameraMatrix << '\n'
@@ -150,24 +149,136 @@ int calibrateAndSave(
     storage << "dist_coeffs" << distCoeffs;
     storage.release();
     std::cout << "saved=" << kOutputPath << '\n';
-    return 0;
+    return true;
 }
 
-int solveAndSaveHandEye(
-    const std::vector<cv::Mat>& rGripper2Base,
-    const std::vector<cv::Mat>& tGripper2Base,
-    const std::vector<cv::Mat>& rTarget2Cam,
-    const std::vector<cv::Mat>& tTarget2Cam)
+// 解手眼并保存。四个位姿向量会被就地裁成「棋盘→世界自洽」的子集：
+// 达标位姿够(>=kRequiredHandEyeViews)就用干净子集重解+保存并返回 true；
+// 不够则返回 false，让调用方继续采集补齐。
+bool solveAndSaveHandEye(
+    std::vector<cv::Mat>& rGripper2Base,
+    std::vector<cv::Mat>& tGripper2Base,
+    std::vector<cv::Mat>& rTarget2Cam,
+    std::vector<cv::Mat>& tTarget2Cam)
 {
-    // 解手眼：eye-in-hand，得相机→云台机体的旋转+平移
     cv::Mat rCam2Gripper;
     cv::Mat tCam2Gripper;
-    cv::calibrateHandEye(
-        rGripper2Base, tGripper2Base, rTarget2Cam, tTarget2Cam,
-        rCam2Gripper, tCam2Gripper, cv::CALIB_HAND_EYE_TSAI);
 
-    std::cout << "handeye poses=" << rTarget2Cam.size() << '\n'
-              << "cam_to_gimbal_rotation=\n" << rCam2Gripper << '\n'
+    // 解 → 评估自洽性 → 剔离群 → 剩下够就重解，不够就停。循环里评估代码只写一份
+    while (true)
+    {
+        // 解手眼：eye-in-hand，得相机→云台机体的旋转 X=cam→gripper + 平移
+        cv::calibrateHandEye(
+            rGripper2Base, tGripper2Base, rTarget2Cam, tTarget2Cam,
+            rCam2Gripper, tCam2Gripper, cv::CALIB_HAND_EYE_TSAI);
+
+        // 质量评估(方案二)：板子固定，每帧反推的棋盘→世界位姿理应重合，看离散度
+        // T_target2base = T_gripper2base · X · T_target2cam
+        const std::size_t n = rTarget2Cam.size();
+        std::vector<cv::Mat> rTb(n);
+        std::vector<cv::Vec3d> tTb(n);
+        for (std::size_t i = 0; i < n; ++i)
+        {
+            cv::Mat rTemp = rCam2Gripper * rTarget2Cam[i];                    // R_c2g · R_t2c
+            cv::Mat tTemp = rCam2Gripper * tTarget2Cam[i] + tCam2Gripper;     // R_c2g · t_t2c + t_c2g
+            rTb[i] = rGripper2Base[i] * rTemp;                               // R_g2b · 上
+            cv::Mat tb = rGripper2Base[i] * tTemp + tGripper2Base[i];        // R_g2b · 上 + t_g2b(=0)
+            tTb[i] = cv::Vec3d(tb.at<double>(0), tb.at<double>(1), tb.at<double>(2));
+        }
+
+        // 平移均值
+        cv::Vec3d tMean(0, 0, 0);
+        for (std::size_t i = 0; i < n; ++i)
+        {
+            tMean += tTb[i];
+        }
+        tMean *= 1.0 / static_cast<double>(n);
+
+        // 旋转均值：旋转矩阵求和后 SVD 正交化
+        Eigen::Matrix3d rSum = Eigen::Matrix3d::Zero();
+        for (std::size_t i = 0; i < n; ++i)
+        {
+            Eigen::Matrix3d e;
+            cv::cv2eigen(rTb[i], e);
+            rSum += e;
+        }
+        Eigen::JacobiSVD<Eigen::Matrix3d> svd(rSum, Eigen::ComputeFullU | Eigen::ComputeFullV);
+        Eigen::Matrix3d rMeanE = svd.matrixU() * svd.matrixV().transpose();
+        cv::Mat rMean;
+        cv::eigen2cv(rMeanE, rMean);
+
+        // 逐帧偏差：平移欧氏距离(mm)、旋转与均值的夹角(度)
+        std::vector<double> rotDev(n);
+        std::vector<double> transDev(n);
+        for (std::size_t i = 0; i < n; ++i)
+        {
+            transDev[i] = cv::norm(tTb[i] - tMean);
+            cv::Mat dr = rMean.t() * rTb[i];
+            const double trace = dr.at<double>(0, 0) + dr.at<double>(1, 1) + dr.at<double>(2, 2);
+            rotDev[i] = std::acos(std::clamp((trace - 1.0) / 2.0, -1.0, 1.0)) * 180.0 / CV_PI;
+        }
+
+        // 整体离散度(std)当质量数，再逐帧打印
+        double rotStd = 0.0;
+        double transStd = 0.0;
+        for (std::size_t i = 0; i < n; ++i)
+        {
+            rotStd += rotDev[i] * rotDev[i];
+            transStd += transDev[i] * transDev[i];
+        }
+        rotStd = std::sqrt(rotStd / static_cast<double>(n));
+        transStd = std::sqrt(transStd / static_cast<double>(n));
+        std::cout << "handeye poses=" << n << " target2base spread: rot_std=" << rotStd
+                  << " deg, trans_std=" << transStd << " mm, per-pose:\n";
+        for (std::size_t i = 0; i < n; ++i)
+        {
+            std::cout << "  pose " << i << " rot=" << rotDev[i] << " deg trans=" << transDev[i] << " mm\n";
+        }
+
+        // 只保留自洽达标的位姿
+        std::vector<cv::Mat> kRg;
+        std::vector<cv::Mat> kTg;
+        std::vector<cv::Mat> kRt;
+        std::vector<cv::Mat> kTt;
+        for (std::size_t i = 0; i < n; ++i)
+        {
+            if (rotDev[i] <= kMaxHandEyeRotError && transDev[i] <= kMaxHandEyeTransError)
+            {
+                kRg.push_back(rGripper2Base[i]);
+                kTg.push_back(tGripper2Base[i]);
+                kRt.push_back(rTarget2Cam[i]);
+                kTt.push_back(tTarget2Cam[i]);
+            }
+            else
+            {
+                std::cout << "drop pose " << i << " (rot=" << rotDev[i] << " deg, trans="
+                          << transDev[i] << " mm)\n";
+            }
+        }
+
+        // 没有离群：当前解就是最终解，跳出去保存
+        if (kRt.size() == n)
+        {
+            break;
+        }
+
+        // 有离群：更新为干净子集
+        rGripper2Base = kRg;
+        tGripper2Base = kTg;
+        rTarget2Cam = kRt;
+        tTarget2Cam = kTt;
+
+        // 达标位姿不够，别保存，回去继续采
+        if (rTarget2Cam.size() < kRequiredHandEyeViews)
+        {
+            std::cout << "clean poses " << rTarget2Cam.size() << "/" << kRequiredHandEyeViews
+                      << ", keep capturing\n";
+            return false;
+        }
+        // 否则用干净子集重解一轮
+    }
+
+    std::cout << "cam_to_gimbal_rotation=\n" << rCam2Gripper << '\n'
               << "cam_to_gimbal_translation=" << tCam2Gripper.t() << " mm\n";
 
     const std::filesystem::path output(kHandEyeOutputPath);
@@ -183,7 +294,7 @@ int solveAndSaveHandEye(
     storage << "views" << static_cast<int>(rTarget2Cam.size());
     storage.release();
     std::cout << "saved=" << kHandEyeOutputPath << '\n';
-    return 0;
+    return true;
 }
 
 int run()
@@ -269,12 +380,11 @@ int run()
                 std::cout << "need " << kRequiredViews << " views, keep capturing\n";
                 continue;
             }
-            const int rc = calibrateAndSave(imagePoints, imageSize, cameraMatrix, distCoeffs);
-            if (rc != 0)
+            // 达标视图够就标定+保存并结束；不够 calibrateAndSave 会裁掉坏张并提示，留在循环继续采
+            if (calibrateAndSave(imagePoints, imageSize, cameraMatrix, distCoeffs))
             {
-                return rc;
+                intrinsicsDone = true;
             }
-            intrinsicsDone = true;
         }
     }
 
@@ -378,7 +488,11 @@ int run()
                 std::cout << "need " << kRequiredHandEyeViews << " poses, keep capturing\n";
                 continue;
             }
-            return solveAndSaveHandEye(rGripper2Base, tGripper2Base, rTarget2Cam, tTarget2Cam);
+            // 达标位姿够就解算+保存并结束；不够 solveAndSaveHandEye 会裁掉离群位姿并提示，留在循环继续采
+            if (solveAndSaveHandEye(rGripper2Base, tGripper2Base, rTarget2Cam, tTarget2Cam))
+            {
+                return 0;
+            }
         }
     }
 
