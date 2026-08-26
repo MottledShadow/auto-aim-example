@@ -94,6 +94,9 @@ set_target_properties(snapshot
         INSTALL_RPATH "${MVCAM_LIBRARY_DIR}"
 )
 
+# 手眼标定用 Eigen 把 IMU 四元数转旋转矩阵，链 serial 取云台朝向（serial 以 PUBLIC 暴露头文件路径）
+find_package(Eigen3 3.4 REQUIRED NO_MODULE)
+
 add_executable(calibrate_camera
     tools/calibrate_camera.cpp
     hik_camera/hik_camera.cpp
@@ -107,6 +110,8 @@ target_include_directories(calibrate_camera
 
 target_link_libraries(calibrate_camera
     PRIVATE
+        serial
+        Eigen3::Eigen
         ${OpenCV_LIBS}
         "${MVCAM_LIBRARY}"
         Threads::Threads

@@ -1,38 +1,31 @@
-#include <algorithm>
+#include <cstdio>
 #include <filesystem>
 #include <iostream>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
+#include <Eigen/Geometry>
 #include <opencv2/calib3d.hpp>
 #include <opencv2/core.hpp>
+#include <opencv2/core/eigen.hpp>
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 
 #include "hik_camera.hpp"
+#include "serial.hpp"
 
 namespace
 {
 
-constexpr int kTimeoutMs = 1000;
 constexpr int kRequiredViews = 20;
+constexpr std::size_t kRequiredHandEyeViews = 15;
 constexpr double kSquareSize = 60.0;
-constexpr double kPreviewScale = 0.25;
+constexpr int kDetectInterval = 3;   // 每 3 帧才在原图上检测一次角点，其余帧沿用上次结果
 constexpr char kOutputPath[] = "config/camera_calibration.yml";
+constexpr char kHandEyeOutputPath[] = "config/hand_eye_calibration.yml";
 const cv::Size kPatternSize(11, 8);
-
-void printUsage(const char* exe)
-{
-    std::cout
-        << "Usage:\n"
-        << "  " << exe << "\n"
-        << "  " << exe << " --images DIR\n\n"
-        << "Calibrate a camera with an 11x8-inner-corner chessboard using at least 20 views.\n"
-        << "The square size is 60 mm and the result is written to " << kOutputPath << ".\n\n"
-        << "Live keys: SPACE accept view, u undo last, ENTER calibrate, ESC quit\n";
-}
 
 std::vector<cv::Point3f> makeObjectPoints()
 {
@@ -62,29 +55,26 @@ cv::Mat toGray(const cv::Mat& image)
     return gray;
 }
 
-bool detectCorners(const cv::Mat& gray, std::vector<cv::Point2f>& corners, bool refine)
+// 预览判断和采纳共用这一份结果，避免两次检测分辨率不同导致的不一致
+bool detectCorners(const cv::Mat& gray, std::vector<cv::Point2f>& corners)
 {
-    int flags = cv::CALIB_CB_ADAPTIVE_THRESH | cv::CALIB_CB_NORMALIZE_IMAGE;
-    if (!refine)
-    {
-        flags |= cv::CALIB_CB_FAST_CHECK;
-    }
-    if (!cv::findChessboardCorners(gray, kPatternSize, corners, flags))
-    {
-        return false;
-    }
-    if (refine)
-    {
-        cv::cornerSubPix(
-            gray, corners, cv::Size(11, 11), cv::Size(-1, -1),
-            cv::TermCriteria(cv::TermCriteria::EPS + cv::TermCriteria::MAX_ITER, 30, 0.001));
-    }
-    return true;
+    const int flags = cv::CALIB_CB_ADAPTIVE_THRESH | cv::CALIB_CB_NORMALIZE_IMAGE | cv::CALIB_CB_FAST_CHECK;
+    return cv::findChessboardCorners(gray, kPatternSize, corners, flags);
+}
+
+// 采纳时对已检出的角点原地做亚像素细化，供 calibrateCamera / solvePnP 用
+void refineCorners(const cv::Mat& gray, std::vector<cv::Point2f>& corners)
+{
+    cv::cornerSubPix(
+        gray, corners, cv::Size(11, 11), cv::Size(-1, -1),
+        cv::TermCriteria(cv::TermCriteria::EPS + cv::TermCriteria::MAX_ITER, 30, 0.001));
 }
 
 int calibrateAndSave(
     const std::vector<std::vector<cv::Point2f>>& imagePoints,
-    cv::Size imageSize)
+    cv::Size imageSize,
+    cv::Mat& cameraMatrix,
+    cv::Mat& distCoeffs)
 {
     if (imagePoints.size() < kRequiredViews)
     {
@@ -96,8 +86,6 @@ int calibrateAndSave(
     const std::vector<cv::Point3f> object = makeObjectPoints();
     const std::vector<std::vector<cv::Point3f>> objectPoints(imagePoints.size(), object);
 
-    cv::Mat cameraMatrix;
-    cv::Mat distCoeffs;
     const double rms = cv::calibrateCamera(
         objectPoints, imagePoints, imageSize, cameraMatrix, distCoeffs,
         cv::noArray(), cv::noArray());
@@ -122,92 +110,192 @@ int calibrateAndSave(
     return 0;
 }
 
-int runImages(const std::string& imagesDir)
+int solveAndSaveHandEye(
+    const std::vector<cv::Mat>& rGripper2Base,
+    const std::vector<cv::Mat>& tGripper2Base,
+    const std::vector<cv::Mat>& rTarget2Cam,
+    const std::vector<cv::Mat>& tTarget2Cam)
 {
-    namespace fs = std::filesystem;
-    if (!fs::exists(imagesDir) || !fs::is_directory(imagesDir))
-    {
-        throw std::runtime_error("images directory not found: " + imagesDir);
-    }
+    // 解手眼：eye-in-hand，得相机→云台机体的旋转+平移
+    cv::Mat rCam2Gripper;
+    cv::Mat tCam2Gripper;
+    cv::calibrateHandEye(
+        rGripper2Base, tGripper2Base, rTarget2Cam, tTarget2Cam,
+        rCam2Gripper, tCam2Gripper, cv::CALIB_HAND_EYE_TSAI);
 
-    std::vector<std::string> files;
-    for (const auto& entry : fs::directory_iterator(imagesDir))
-    {
-        if (entry.is_regular_file())
-        {
-            files.push_back(entry.path().string());
-        }
-    }
-    std::sort(files.begin(), files.end());
+    std::cout << "handeye poses=" << rTarget2Cam.size() << '\n'
+              << "cam_to_gimbal_rotation=\n" << rCam2Gripper << '\n'
+              << "cam_to_gimbal_translation=" << tCam2Gripper.t() << " mm\n";
 
-    std::vector<std::vector<cv::Point2f>> imagePoints;
-    cv::Size imageSize;
-    for (const auto& file : files)
+    const std::filesystem::path output(kHandEyeOutputPath);
+    std::filesystem::create_directories(output.parent_path());
+    cv::FileStorage storage(kHandEyeOutputPath, cv::FileStorage::WRITE);
+    if (!storage.isOpened())
     {
-        const cv::Mat image = cv::imread(file, cv::IMREAD_COLOR);
-        if (image.empty())
-        {
-            continue;
-        }
-        const cv::Mat gray = toGray(image);
-        std::vector<cv::Point2f> corners;
-        if (detectCorners(gray, corners, true))
-        {
-            imagePoints.push_back(corners);
-            imageSize = gray.size();
-            std::cout << "ok   " << file << '\n';
-        }
-        else
-        {
-            std::cout << "skip " << file << " (no chessboard)\n";
-        }
+        throw std::runtime_error("cannot open output file for writing: " + std::string(kHandEyeOutputPath));
     }
-
-    return calibrateAndSave(imagePoints, imageSize);
+    storage << "cam_to_gimbal_rotation" << rCam2Gripper;
+    storage << "cam_to_gimbal_translation" << tCam2Gripper;
+    storage << "method" << "TSAI";
+    storage << "views" << static_cast<int>(rTarget2Cam.size());
+    storage.release();
+    std::cout << "saved=" << kHandEyeOutputPath << '\n';
+    return 0;
 }
 
-int runLive()
+int run()
 {
-    // 构造即初始化，失败抛异常（由 main 的 try/catch 兜住）
+    // 构造即初始化，失败抛异常：相机 + 串口(IMU 四元数)
     auto_aim::HikCamera camera;
+    Serial serial;
 
+    // 预览用全分辨率显示，窗口设成可缩放以免超出屏幕
+    cv::namedWindow("calibrate_camera", cv::WINDOW_NORMAL);
+
+    // === 阶段一：内参标定===
     std::vector<std::vector<cv::Point2f>> imagePoints;
     cv::Size imageSize;
+    cv::Mat cameraMatrix;
+    cv::Mat distCoeffs;
 
-    std::cout << "live calibration: SPACE accept view, u undo last, ENTER calibrate, ESC quit\n";
+    std::cout << "hand-eye stage 1/2 (intrinsics): SPACE accept view, u undo, ENTER calibrate, ESC quit\n";
 
-    while (true)
+    // 隔帧检测：每 kDetectInterval 帧才在原图跑一次角点检测，其余帧沿用缓存
+    // 缓存整帧的灰度图、角点、是否检出，以及画好角点的预览底图，保证看到的==采纳的
+    int sinceDetect = kDetectInterval;
+    cv::Mat detGray;
+    std::vector<cv::Point2f> detCorners;
+    bool detFound = false;
+    cv::Mat detBase;
+
+    bool intrinsicsDone = false;
+    while (!intrinsicsDone)
     {
         auto_aim::HikCameraFrame frame;
-        const int grabResult = camera.capture(frame, kTimeoutMs);
+        const int grabResult = camera.capture(frame);
         if (grabResult != MV_OK)
         {
             std::cerr << "warning: frame timeout/error\n";
             continue;
         }
 
-        cv::Mat preview;
-        cv::resize(frame.image, preview, {}, kPreviewScale, kPreviewScale, cv::INTER_AREA);
-        const cv::Mat previewGray = toGray(preview);
-        std::vector<cv::Point2f> corners;
-        const bool found = detectCorners(previewGray, corners, false);
+        // 到间隔就在全分辨率原图上检测一次，刷新缓存与预览底图
+        if (++sinceDetect >= kDetectInterval)
+        {
+            sinceDetect = 0;
+            detGray = toGray(frame.image);
+            detFound = detectCorners(detGray, detCorners);
+            detBase = frame.image.clone();
+            cv::drawChessboardCorners(detBase, kPatternSize, detCorners, detFound);
+        }
 
-        cv::Mat display;
-        if (preview.channels() == 1)
-        {
-            cv::cvtColor(preview, display, cv::COLOR_GRAY2BGR);
-        }
-        else
-        {
-            display = preview;
-        }
-        cv::drawChessboardCorners(display, kPatternSize, corners, found);
+        // 预览底图上叠当前进度文字（文字每帧刷新，底图按检测间隔刷新）
+        cv::Mat display = detBase.clone();
         cv::putText(
             display,
-            "views=" + std::to_string(imagePoints.size()) + "/" + std::to_string(kRequiredViews) +
-                (found ? "  board:OK" : "  board:--"),
+            "intrinsics views=" + std::to_string(imagePoints.size()) + "/" + std::to_string(kRequiredViews) +
+                (detFound ? "  board:OK" : "  board:--"),
             cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 0.8,
-            found ? cv::Scalar(0, 255, 0) : cv::Scalar(0, 0, 255), 2);
+            detFound ? cv::Scalar(0, 255, 0) : cv::Scalar(0, 0, 255), 2);
+        cv::imshow("calibrate_camera", display);
+
+        const int key = cv::waitKey(1);
+        if (key == 27)
+        {
+            cv::destroyAllWindows();
+            std::cout << "aborted, no file written\n";
+            return 0;
+        }
+        if (key == 13 || key == 10)
+        {
+            if (imagePoints.size() < kRequiredViews)
+            {
+                std::cout << "need " << kRequiredViews << " views, got " << imagePoints.size() << '\n';
+                continue;
+            }
+            const int rc = calibrateAndSave(imagePoints, imageSize, cameraMatrix, distCoeffs);
+            if (rc != 0)
+            {
+                return rc;
+            }
+            intrinsicsDone = true;
+        }
+        else if (key == ' ')
+        {
+            // 采纳的就是预览里那一帧检测结果，仅补做亚像素细化
+            if (!detFound)
+            {
+                std::cout << "no chessboard detected, view not accepted\n";
+                continue;
+            }
+            refineCorners(detGray, detCorners);
+            imagePoints.push_back(detCorners);
+            imageSize = detGray.size();
+            std::cout << "accepted view " << imagePoints.size() << '\n';
+        }
+        else if ((key == 'u' || key == 'U') && !imagePoints.empty())
+        {
+            imagePoints.pop_back();
+            std::cout << "removed last view, now " << imagePoints.size() << '\n';
+        }
+    }
+
+    // === 阶段二：手眼采集 ===
+    // 棋盘物点：手眼阶段用它跑 solvePnP 得棋盘→相机外参
+    const std::vector<cv::Point3f> object = makeObjectPoints();
+    std::vector<cv::Mat> rGripper2Base;
+    std::vector<cv::Mat> tGripper2Base;
+    std::vector<cv::Mat> rTarget2Cam;
+    std::vector<cv::Mat> tTarget2Cam;
+
+    std::cout << "hand-eye stage 2/2: 每次采集前转动云台改变朝向; "
+                 "SPACE accept pose, u undo, ENTER solve, ESC quit\n";
+
+    // 同阶段一的隔帧检测；额外缓存检测那一刻的云台四元数，保证解算用的姿态与画面同步
+    sinceDetect = kDetectInterval;
+    Quaternion detQ{};
+
+    while (true)
+    {
+        auto_aim::HikCameraFrame frame;
+        const int grabResult = camera.capture(frame);
+        if (grabResult != MV_OK)
+        {
+            std::cerr << "warning: frame timeout/error\n";
+            continue;
+        }
+
+        // 到间隔就在全分辨率原图上检测一次，同步抓当前四元数，刷新缓存与预览底图
+        if (++sinceDetect >= kDetectInterval)
+        {
+            sinceDetect = 0;
+            detGray = toGray(frame.image);
+            detFound = detectCorners(detGray, detCorners);
+            detQ = serial.latest();
+
+            if (frame.image.channels() == 1)
+            {
+                cv::cvtColor(frame.image, detBase, cv::COLOR_GRAY2BGR);
+            }
+            else
+            {
+                detBase = frame.image.clone();
+            }
+            cv::drawChessboardCorners(detBase, kPatternSize, detCorners, detFound);
+        }
+
+        cv::Mat display = detBase.clone();
+        cv::putText(
+            display,
+            "handeye poses=" + std::to_string(rTarget2Cam.size()) + "/" + std::to_string(kRequiredHandEyeViews) +
+                (detFound ? "  board:OK" : "  board:--"),
+            cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 0.8,
+            detFound ? cv::Scalar(0, 255, 0) : cv::Scalar(0, 0, 255), 2);
+        char quatText[96];
+        std::snprintf(quatText, sizeof(quatText), "quat w=%.3f x=%.3f y=%.3f z=%.3f", detQ.w, detQ.x, detQ.y, detQ.z);
+        cv::putText(
+            display, quatText, cv::Point(10, 60), cv::FONT_HERSHEY_SIMPLEX, 0.6,
+            cv::Scalar(255, 255, 0), 2);
         cv::imshow("calibrate_camera", display);
 
         const int key = cv::waitKey(1);
@@ -217,65 +305,66 @@ int runLive()
         }
         if (key == 13 || key == 10)
         {
-            if (imagePoints.size() < kRequiredViews)
+            if (rTarget2Cam.size() < kRequiredHandEyeViews)
             {
-                std::cout << "need " << kRequiredViews << " views, got " << imagePoints.size() << '\n';
+                std::cout << "need " << kRequiredHandEyeViews << " poses, got " << rTarget2Cam.size() << '\n';
                 continue;
             }
-            return calibrateAndSave(imagePoints, imageSize);
+            return solveAndSaveHandEye(rGripper2Base, tGripper2Base, rTarget2Cam, tTarget2Cam);
         }
         if (key == ' ')
         {
-            const cv::Mat gray = toGray(frame.image);
-            std::vector<cv::Point2f> refined;
-            if (detectCorners(gray, refined, true))
+            // 采纳的就是预览里那一帧的角点与四元数，仅补做亚像素细化
+            if (!detFound)
             {
-                imagePoints.push_back(refined);
-                imageSize = gray.size();
-                std::cout << "accepted view " << imagePoints.size() << '\n';
+                std::cout << "no chessboard detected, pose not accepted\n";
+                continue;
             }
-            else
-            {
-                std::cout << "no chessboard detected, view not accepted\n";
-            }
+            refineCorners(detGray, detCorners);
+
+            // 棋盘→相机：solvePnP 得 rvec/tvec，Rodrigues 转旋转矩阵
+            cv::Mat rvec;
+            cv::Mat tvec;
+            cv::solvePnP(object, detCorners, cameraMatrix, distCoeffs, rvec, tvec);
+            cv::Mat rTarget;
+            cv::Rodrigues(rvec, rTarget);
+
+            // 机体→世界(=gripper→base)：IMU 四元数经 Eigen 转旋转矩阵，平移置 0（云台绕固定轴旋转）
+            Eigen::Quaterniond qImu(detQ.w, detQ.x, detQ.y, detQ.z);
+            Eigen::Matrix3d rImu = qImu.normalized().toRotationMatrix();
+            cv::Mat rGripper;
+            cv::eigen2cv(rImu, rGripper);
+
+            rTarget2Cam.push_back(rTarget);
+            tTarget2Cam.push_back(tvec);
+            rGripper2Base.push_back(rGripper);
+            tGripper2Base.push_back(cv::Mat::zeros(3, 1, CV_64F));
+            std::cout << "accepted pose " << rTarget2Cam.size() << '\n';
         }
-        else if ((key == 'u' || key == 'U') && !imagePoints.empty())
+        else if ((key == 'u' || key == 'U') && !rTarget2Cam.empty())
         {
-            imagePoints.pop_back();
-            std::cout << "removed last view, now " << imagePoints.size() << '\n';
+            rTarget2Cam.pop_back();
+            tTarget2Cam.pop_back();
+            rGripper2Base.pop_back();
+            tGripper2Base.pop_back();
+            std::cout << "removed last pose, now " << rTarget2Cam.size() << '\n';
         }
     }
 
     cv::destroyAllWindows();
-    std::cout << "aborted, no file written\n";
+    std::cout << "aborted, no hand-eye file written\n";
     return 0;
 }
 
 } // namespace
 
-int main(int argc, char** argv)
+int main()
+try
 {
-    try
-    {
-        if (argc == 1)
-        {
-            return runLive();
-        }
-        if (argc == 2 && (std::string(argv[1]) == "--help" || std::string(argv[1]) == "-h"))
-        {
-            printUsage(argv[0]);
-            return 0;
-        }
-        if (argc == 3 && std::string(argv[1]) == "--images")
-        {
-            return runImages(argv[2]);
-        }
-        throw std::runtime_error("invalid arguments");
-    }
-    catch (const std::exception& ex)
-    {
-        std::cerr << "error: " << ex.what() << "\n\n";
-        printUsage(argv[0]);
-        return 1;
-    }
+    return run();
+}
+catch (const std::exception& ex)
+{
+    std::cerr << "error: " << ex.what() << '\n';
+    return 1;
 }
