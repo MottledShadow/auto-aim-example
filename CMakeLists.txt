@@ -40,7 +40,7 @@ add_subdirectory(detector)
 # tracker 追踪模块（静态库）：相机系装甲板 → 世界系精简装甲板，依赖 detector
 add_subdirectory(tracker)
 
-# serial 模块（静态库）：串口收 STM32 四元数，附带 serial_recv_test / serial_test 两个冒烟测试
+# serial 模块（静态库）：串口收 STM32 四元数；crc 离线单测在 serial/tests 下自成 project，本机原生跑
 add_subdirectory(serial)
 
 # 手眼标定用 Eigen 把 IMU 四元数转旋转矩阵，链 serial 取云台朝向（serial 以 PUBLIC 暴露头文件路径）

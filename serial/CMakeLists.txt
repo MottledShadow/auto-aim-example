@@ -12,28 +12,4 @@ target_link_libraries(serial PUBLIC Threads::Threads)
 
 target_compile_options(serial PRIVATE -Wall -Wextra -Wpedantic)
 
-# 连真实 STM32 的接收冒烟测试（不是离线单测）
-add_executable(serial_recv_test
-    src/serial_recv_test.cpp
-)
-
-target_link_libraries(serial_recv_test PRIVATE serial)
-
-target_compile_options(serial_recv_test PRIVATE -Wall -Wextra -Wpedantic)
-
-set_target_properties(serial_recv_test
-    PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}"
-)
-
-# 早期链路回显冒烟测试：STM32 发、Jetson 原样回发，纯 POSIX termios、不依赖任何库
-add_executable(serial_test
-    src/serial_test.cpp
-)
-
-target_compile_options(serial_test PRIVATE -Wall -Wextra -Wpedantic)
-
-set_target_properties(serial_test
-    PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}"
-)
+# crc 离线单测在 tests/ 下自成一个 project，本机原生跑（见 serial/crc-test-run.sh），不进本交叉构建。
