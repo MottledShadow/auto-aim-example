@@ -66,3 +66,15 @@ TEST(CrcFrame, QuaternionFrameRoundTrip) {
     crc::append(frame.data(), frame.size());   // CRC 覆盖帧头+负载，写入 frame[17..18]
     EXPECT_TRUE(crc::verify(frame.data(), frame.size()));
 }
+
+// 8. 发送帧契约：16 字节目标帧（0xA5 + 标志 + 3×float32 + 2 CRC），append 后 verify 通过
+TEST(CrcFrame, TargetFrameRoundTrip) {
+    std::vector<std::uint8_t> frame(16, 0x00);
+    frame[0] = 0xA5;   // 发送帧头
+    frame[1] = 0x01;   // 检测到
+    for (int i = 2; i <= 13; ++i) {   // 负载 frame[2..13] 填非零，模拟 3×float32
+        frame[i] = static_cast<std::uint8_t>(i * 11);
+    }
+    crc::append(frame.data(), frame.size());   // CRC 覆盖 frame[0..13]，写入 frame[14..15]
+    EXPECT_TRUE(crc::verify(frame.data(), frame.size()));
+}

@@ -17,6 +17,10 @@ static const int kPayloadSize = 16;   // 4 × float32
 static const int kCrcSize = 2;        // CRC16，小端 2 字节
 static const int kFrameSize = 1 + kPayloadSize + kCrcSize;   // 帧头 + 负载 + CRC = 19
 
+// 发送帧：帧头 0xA5 + 检测标志 1 字节 + 3 个 float32 小端(x/y/z) + 末尾 2 字节小端 CRC16
+static const unsigned char kSendHeader = 0xA5;
+static const int kSendFrameSize = 16;   // 帧头1 + 标志1 + 3×float32 + CRC16(2)
+
 // 把 yml 里的整数波特率映射成 termios 的 Bxxxx 常量
 static speed_t toBaudConstant(int baudrate) {
     switch (baudrate) {
@@ -124,6 +128,24 @@ Serial::~Serial() {
 
 Quaternion Serial::latest() {
     return slot_.latest();
+}
+
+void Serial::send(const TargetOutput& target) {
+    // 1. 组帧：帧头 + 检测标志
+    std::uint8_t frame[kSendFrameSize];
+    frame[0] = kSendHeader;
+    frame[1] = target.detected ? 1 : 0;
+
+    // 2. x/y/z 三个 float32 小端直接 memcpy 进负载
+    std::memcpy(frame + 2 + 0, &target.x, 4);
+    std::memcpy(frame + 2 + 4, &target.y, 4);
+    std::memcpy(frame + 2 + 8, &target.z, 4);
+
+    // 3. CRC16 覆盖帧头+标志+坐标，写入末尾 2 字节（小端）
+    crc::append(frame, kSendFrameSize);
+
+    // 4. 整帧一次写出
+    write(fd_, frame, kSendFrameSize);
 }
 
 void Serial::receiveLoop() {
