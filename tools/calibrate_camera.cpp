@@ -21,8 +21,7 @@ namespace
 
 constexpr int kRequiredViews = 20;
 constexpr std::size_t kRequiredHandEyeViews = 15;
-constexpr double kSquareSize = 60.0;
-constexpr int kDetectInterval = 3;   // 每 3 帧才在原图上检测一次角点，其余帧沿用上次结果
+constexpr double kSquareSize = 5.0;
 constexpr char kOutputPath[] = "config/camera_calibration.yml";
 constexpr char kHandEyeOutputPath[] = "config/hand_eye_calibration.yml";
 const cv::Size kPatternSize(11, 8);
@@ -55,10 +54,10 @@ cv::Mat toGray(const cv::Mat& image)
     return gray;
 }
 
-// 预览判断和采纳共用这一份结果，避免两次检测分辨率不同导致的不一致
+// 全分辨率找棋盘：只在采集结束后的批处理里对拍下的图逐张调用，不进预览循环，故慢无妨
 bool detectCorners(const cv::Mat& gray, std::vector<cv::Point2f>& corners)
 {
-    const int flags = cv::CALIB_CB_ADAPTIVE_THRESH | cv::CALIB_CB_NORMALIZE_IMAGE | cv::CALIB_CB_FAST_CHECK;
+    const int flags = cv::CALIB_CB_ADAPTIVE_THRESH | cv::CALIB_CB_NORMALIZE_IMAGE;
     return cv::findChessboardCorners(gray, kPatternSize, corners, flags);
 }
 
@@ -149,24 +148,19 @@ int run()
     auto_aim::HikCamera camera;
     Serial serial;
 
-    // 预览用全分辨率显示，窗口设成可缩放以免超出屏幕
-    cv::namedWindow("calibrate_camera", cv::WINDOW_NORMAL);
+    // 预览用全分辨率显示，窗口可缩放且保持宽高比；给个 1080p 屏上留边的初始尺寸
+    cv::namedWindow("calibrate_camera", cv::WINDOW_NORMAL | cv::WINDOW_KEEPRATIO);
+    cv::resizeWindow("calibrate_camera", 1280, 800);
 
-    // === 阶段一：内参标定===
-    std::vector<std::vector<cv::Point2f>> imagePoints;
+    // === 阶段一：内参标定 ===
+    // 采集时不检测角点，预览只管流畅显示；SPACE 拍一张存起来，ENTER 后再对所有拍下的图批量找角点
+    std::vector<std::vector<cv::Point2f>> imagePoints;  // 已成功检出的视图，跨批累积到够数
     cv::Size imageSize;
     cv::Mat cameraMatrix;
     cv::Mat distCoeffs;
+    std::vector<cv::Mat> shots;  // 本批拍下的全分辨率灰度图，ENTER 批量检测后清空
 
-    std::cout << "hand-eye stage 1/2 (intrinsics): SPACE accept view, u undo, ENTER calibrate, ESC quit\n";
-
-    // 隔帧检测：每 kDetectInterval 帧才在原图跑一次角点检测，其余帧沿用缓存
-    // 缓存整帧的灰度图、角点、是否检出，以及画好角点的预览底图，保证看到的==采纳的
-    int sinceDetect = kDetectInterval;
-    cv::Mat detGray;
-    std::vector<cv::Point2f> detCorners;
-    bool detFound = false;
-    cv::Mat detBase;
+    std::cout << "hand-eye stage 1/2 (intrinsics): SPACE capture, u undo, ENTER detect+calibrate, ESC quit\n";
 
     bool intrinsicsDone = false;
     while (!intrinsicsDone)
@@ -179,24 +173,13 @@ int run()
             continue;
         }
 
-        // 到间隔就在全分辨率原图上检测一次，刷新缓存与预览底图
-        if (++sinceDetect >= kDetectInterval)
-        {
-            sinceDetect = 0;
-            detGray = toGray(frame.image);
-            detFound = detectCorners(detGray, detCorners);
-            detBase = frame.image.clone();
-            cv::drawChessboardCorners(detBase, kPatternSize, detCorners, detFound);
-        }
-
-        // 预览底图上叠当前进度文字（文字每帧刷新，底图按检测间隔刷新）
-        cv::Mat display = detBase.clone();
+        // 预览：直接显示当前帧，只叠张数进度，不做任何检测，故不卡
+        cv::Mat display = frame.image.clone();
         cv::putText(
             display,
-            "intrinsics views=" + std::to_string(imagePoints.size()) + "/" + std::to_string(kRequiredViews) +
-                (detFound ? "  board:OK" : "  board:--"),
-            cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 0.8,
-            detFound ? cv::Scalar(0, 255, 0) : cv::Scalar(0, 0, 255), 2);
+            "captured=" + std::to_string(shots.size()) +
+                "  accepted=" + std::to_string(imagePoints.size()) + "/" + std::to_string(kRequiredViews),
+            cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(0, 255, 0), 2);
         cv::imshow("calibrate_camera", display);
 
         const int key = cv::waitKey(1);
@@ -206,11 +189,40 @@ int run()
             std::cout << "aborted, no file written\n";
             return 0;
         }
-        if (key == 13 || key == 10)
+        if (key == ' ')
         {
+            // 拍一张：只存全分辨率灰度图，检测推迟到 ENTER
+            shots.push_back(toGray(frame.image));
+            imageSize = shots.back().size();
+            std::cout << "captured " << shots.size() << '\n';
+        }
+        else if ((key == 'u' || key == 'U') && !shots.empty())
+        {
+            shots.pop_back();
+            std::cout << "removed last shot, now " << shots.size() << '\n';
+        }
+        else if (key == 13 || key == 10)
+        {
+            // 批量找角点：本批逐张检测，成功的做亚像素细化后并入 imagePoints，再清空本批
+            int found = 0;
+            for (std::size_t i = 0; i < shots.size(); ++i)
+            {
+                std::vector<cv::Point2f> corners;
+                if (detectCorners(shots[i], corners))
+                {
+                    refineCorners(shots[i], corners);
+                    imagePoints.push_back(corners);
+                    ++found;
+                }
+                std::cout << "detect " << (i + 1) << "/" << shots.size() << " ok=" << found << '\r' << std::flush;
+            }
+            std::cout << "\ndetected " << found << "/" << shots.size()
+                      << ", total accepted " << imagePoints.size() << '\n';
+            shots.clear();
+
             if (imagePoints.size() < kRequiredViews)
             {
-                std::cout << "need " << kRequiredViews << " views, got " << imagePoints.size() << '\n';
+                std::cout << "need " << kRequiredViews << " views, keep capturing\n";
                 continue;
             }
             const int rc = calibrateAndSave(imagePoints, imageSize, cameraMatrix, distCoeffs);
@@ -219,24 +231,6 @@ int run()
                 return rc;
             }
             intrinsicsDone = true;
-        }
-        else if (key == ' ')
-        {
-            // 采纳的就是预览里那一帧检测结果，仅补做亚像素细化
-            if (!detFound)
-            {
-                std::cout << "no chessboard detected, view not accepted\n";
-                continue;
-            }
-            refineCorners(detGray, detCorners);
-            imagePoints.push_back(detCorners);
-            imageSize = detGray.size();
-            std::cout << "accepted view " << imagePoints.size() << '\n';
-        }
-        else if ((key == 'u' || key == 'U') && !imagePoints.empty())
-        {
-            imagePoints.pop_back();
-            std::cout << "removed last view, now " << imagePoints.size() << '\n';
         }
     }
 
@@ -248,12 +242,12 @@ int run()
     std::vector<cv::Mat> rTarget2Cam;
     std::vector<cv::Mat> tTarget2Cam;
 
-    std::cout << "hand-eye stage 2/2: 每次采集前转动云台改变朝向; "
-                 "SPACE accept pose, u undo, ENTER solve, ESC quit\n";
+    // 采集时同样只拍不检测；每张图要连同当下的云台四元数一起存，供 ENTER 批处理解算
+    std::vector<cv::Mat> heShots;
+    std::vector<Quaternion> heQuats;
 
-    // 同阶段一的隔帧检测；额外缓存检测那一刻的云台四元数，保证解算用的姿态与画面同步
-    sinceDetect = kDetectInterval;
-    Quaternion detQ{};
+    std::cout << "hand-eye stage 2/2: 每次采集前转动云台改变朝向; "
+                 "SPACE capture, u undo, ENTER detect+solve, ESC quit\n";
 
     while (true)
     {
@@ -265,34 +259,16 @@ int run()
             continue;
         }
 
-        // 到间隔就在全分辨率原图上检测一次，同步抓当前四元数，刷新缓存与预览底图
-        if (++sinceDetect >= kDetectInterval)
-        {
-            sinceDetect = 0;
-            detGray = toGray(frame.image);
-            detFound = detectCorners(detGray, detCorners);
-            detQ = serial.latest();
-
-            if (frame.image.channels() == 1)
-            {
-                cv::cvtColor(frame.image, detBase, cv::COLOR_GRAY2BGR);
-            }
-            else
-            {
-                detBase = frame.image.clone();
-            }
-            cv::drawChessboardCorners(detBase, kPatternSize, detCorners, detFound);
-        }
-
-        cv::Mat display = detBase.clone();
+        // 预览：显示当前帧 + 实时四元数 + 张数，不做检测
+        const Quaternion liveQ = serial.latest();
+        cv::Mat display = frame.image.clone();
         cv::putText(
             display,
-            "handeye poses=" + std::to_string(rTarget2Cam.size()) + "/" + std::to_string(kRequiredHandEyeViews) +
-                (detFound ? "  board:OK" : "  board:--"),
-            cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 0.8,
-            detFound ? cv::Scalar(0, 255, 0) : cv::Scalar(0, 0, 255), 2);
+            "captured=" + std::to_string(heShots.size()) +
+                "  accepted=" + std::to_string(rTarget2Cam.size()) + "/" + std::to_string(kRequiredHandEyeViews),
+            cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(0, 255, 0), 2);
         char quatText[96];
-        std::snprintf(quatText, sizeof(quatText), "quat w=%.3f x=%.3f y=%.3f z=%.3f", detQ.w, detQ.x, detQ.y, detQ.z);
+        std::snprintf(quatText, sizeof(quatText), "quat w=%.3f x=%.3f y=%.3f z=%.3f", liveQ.w, liveQ.x, liveQ.y, liveQ.z);
         cv::putText(
             display, quatText, cv::Point(10, 60), cv::FONT_HERSHEY_SIMPLEX, 0.6,
             cv::Scalar(255, 255, 0), 2);
@@ -303,51 +279,62 @@ int run()
         {
             break;
         }
-        if (key == 13 || key == 10)
+        if (key == ' ')
         {
+            // 拍一张：灰度图 + 当下四元数配对存起来，检测与解算推迟到 ENTER
+            heShots.push_back(toGray(frame.image));
+            heQuats.push_back(liveQ);
+            std::cout << "captured " << heShots.size() << '\n';
+        }
+        else if ((key == 'u' || key == 'U') && !heShots.empty())
+        {
+            heShots.pop_back();
+            heQuats.pop_back();
+            std::cout << "removed last shot, now " << heShots.size() << '\n';
+        }
+        else if (key == 13 || key == 10)
+        {
+            // 批量处理：本批逐张找角点，成功的 solvePnP 得棋盘→相机、四元数转机体→世界，并入解算集合
+            int found = 0;
+            for (std::size_t i = 0; i < heShots.size(); ++i)
+            {
+                std::vector<cv::Point2f> corners;
+                if (detectCorners(heShots[i], corners))
+                {
+                    refineCorners(heShots[i], corners);
+
+                    // 棋盘→相机：solvePnP 得 rvec/tvec，Rodrigues 转旋转矩阵
+                    cv::Mat rvec;
+                    cv::Mat tvec;
+                    cv::solvePnP(object, corners, cameraMatrix, distCoeffs, rvec, tvec);
+                    cv::Mat rTarget;
+                    cv::Rodrigues(rvec, rTarget);
+
+                    // 机体→世界(=gripper→base)：IMU 四元数经 Eigen 转旋转矩阵，平移置 0（云台绕固定轴旋转）
+                    Eigen::Quaterniond qImu(heQuats[i].w, heQuats[i].x, heQuats[i].y, heQuats[i].z);
+                    Eigen::Matrix3d rImu = qImu.normalized().toRotationMatrix();
+                    cv::Mat rGripper;
+                    cv::eigen2cv(rImu, rGripper);
+
+                    rTarget2Cam.push_back(rTarget);
+                    tTarget2Cam.push_back(tvec);
+                    rGripper2Base.push_back(rGripper);
+                    tGripper2Base.push_back(cv::Mat::zeros(3, 1, CV_64F));
+                    ++found;
+                }
+                std::cout << "detect " << (i + 1) << "/" << heShots.size() << " ok=" << found << '\r' << std::flush;
+            }
+            std::cout << "\ndetected " << found << "/" << heShots.size()
+                      << ", total accepted " << rTarget2Cam.size() << '\n';
+            heShots.clear();
+            heQuats.clear();
+
             if (rTarget2Cam.size() < kRequiredHandEyeViews)
             {
-                std::cout << "need " << kRequiredHandEyeViews << " poses, got " << rTarget2Cam.size() << '\n';
+                std::cout << "need " << kRequiredHandEyeViews << " poses, keep capturing\n";
                 continue;
             }
             return solveAndSaveHandEye(rGripper2Base, tGripper2Base, rTarget2Cam, tTarget2Cam);
-        }
-        if (key == ' ')
-        {
-            // 采纳的就是预览里那一帧的角点与四元数，仅补做亚像素细化
-            if (!detFound)
-            {
-                std::cout << "no chessboard detected, pose not accepted\n";
-                continue;
-            }
-            refineCorners(detGray, detCorners);
-
-            // 棋盘→相机：solvePnP 得 rvec/tvec，Rodrigues 转旋转矩阵
-            cv::Mat rvec;
-            cv::Mat tvec;
-            cv::solvePnP(object, detCorners, cameraMatrix, distCoeffs, rvec, tvec);
-            cv::Mat rTarget;
-            cv::Rodrigues(rvec, rTarget);
-
-            // 机体→世界(=gripper→base)：IMU 四元数经 Eigen 转旋转矩阵，平移置 0（云台绕固定轴旋转）
-            Eigen::Quaterniond qImu(detQ.w, detQ.x, detQ.y, detQ.z);
-            Eigen::Matrix3d rImu = qImu.normalized().toRotationMatrix();
-            cv::Mat rGripper;
-            cv::eigen2cv(rImu, rGripper);
-
-            rTarget2Cam.push_back(rTarget);
-            tTarget2Cam.push_back(tvec);
-            rGripper2Base.push_back(rGripper);
-            tGripper2Base.push_back(cv::Mat::zeros(3, 1, CV_64F));
-            std::cout << "accepted pose " << rTarget2Cam.size() << '\n';
-        }
-        else if ((key == 'u' || key == 'U') && !rTarget2Cam.empty())
-        {
-            rTarget2Cam.pop_back();
-            tTarget2Cam.pop_back();
-            rGripper2Base.pop_back();
-            tGripper2Base.pop_back();
-            std::cout << "removed last pose, now " << rTarget2Cam.size() << '\n';
         }
     }
 
