@@ -11,7 +11,7 @@ set -euo pipefail
 # detector 按相对 cwd 读 config/camera_calibration.yml 与 model/{mlp.onnx,label.txt}。
 # 这些运行时依赖(标定+模型)都常驻 Jetson 共享 config/ 和 model/，本脚本只推二进制，都不推。
 target="jetson"
-project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 build_dir="$project_dir/build/cross"
 binary="$build_dir/full_chain_test"
 remote_dir="auto-aim"

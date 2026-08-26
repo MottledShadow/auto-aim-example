@@ -70,7 +70,7 @@ set_target_properties(calibrate_camera
 
 # 全链路集成测试：相机 → 识别 → 坐标变换 → 串口发送 + 屏幕显示
 add_executable(full_chain_test
-    full_chain_test.cpp
+    test/full_chain_test.cpp
 )
 
 # hik_camera/detector/tracker/serial 都 PUBLIC 暴露各自头文件路径与依赖，链这四个即足够
