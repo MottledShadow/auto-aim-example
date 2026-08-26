@@ -12,4 +12,11 @@ target_link_libraries(serial PUBLIC Threads::Threads)
 
 target_compile_options(serial PRIVATE -Wall -Wextra -Wpedantic)
 
+# 连真实 STM32 的接收冒烟测试（不是离线单测）：只在交叉构建树里编，跑在 Jetson 上（见 serial/serial-recv-run.sh）
+add_executable(serial_recv_test tests/serial_recv_test.cpp)
+target_link_libraries(serial_recv_test PRIVATE serial)
+target_compile_options(serial_recv_test PRIVATE -Wall -Wextra -Wpedantic)
+set_target_properties(serial_recv_test PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}")
+
 # crc 离线单测在 tests/ 下自成一个 project，本机原生跑（见 serial/crc-test-run.sh），不进本交叉构建。
