@@ -8,7 +8,7 @@
 
 #include "detector_types.hpp"
 
-namespace auto_aim
+namespace auto_aim::detector
 {
 
 // PnP 位姿解算参数：装甲板物理尺寸(mm) + solvePnP 方法（尺寸暂沿用占位值）
@@ -38,4 +38,4 @@ private:
     PnpSolverParams params_;
 };
 
-} // namespace auto_aim
+} // namespace auto_aim::detector

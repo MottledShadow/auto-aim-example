@@ -5,7 +5,7 @@
 
 #include <opencv2/imgproc.hpp>
 
-namespace auto_aim
+namespace auto_aim::detector
 {
 
 PreprocessResult LightbarDetector::preprocess(const cv::Mat& frame) const
@@ -257,4 +257,4 @@ std::vector<Armor> LightbarDetector::matchArmors(const std::vector<LightBar>& li
     return result;
 }
 
-} // namespace auto_aim
+} // namespace auto_aim::detector

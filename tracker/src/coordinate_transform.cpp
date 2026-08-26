@@ -8,7 +8,7 @@
 #include <opencv2/core/eigen.hpp>
 #include <opencv2/core/persistence.hpp>
 
-namespace auto_aim
+namespace auto_aim::tracker
 {
 
 namespace
@@ -68,7 +68,7 @@ CoordinateTransform::CoordinateTransform()
     }
 }
 
-std::vector<TrackedArmor> CoordinateTransform::toWorld(const std::vector<Armor>& armors,
+std::vector<TrackedArmor> CoordinateTransform::toWorld(const std::vector<detector::Armor>& armors,
                                                        const cv::Vec4d& quaternion) const
 {
     //IMU 四元数(w,x,y,z) 直接构 Eigen 四元数，转成机体系→世界系旋转矩阵 R_imu
@@ -82,7 +82,7 @@ std::vector<TrackedArmor> CoordinateTransform::toWorld(const std::vector<Armor>&
     cv::cv2eigen(tCamToGimbal_, tCam2Gimbal);
 
     std::vector<TrackedArmor> tracked;
-    for (const Armor& armor : armors)
+    for (const detector::Armor& armor : armors)
     {
         TrackedArmor out;
         out.type = armor.type;
@@ -118,4 +118,4 @@ double CoordinateTransform::orientationToYaw(const cv::Vec4d& q)
     return std::atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z));
 }
 
-} // namespace auto_aim
+} // namespace auto_aim::tracker

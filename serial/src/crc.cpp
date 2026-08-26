@@ -2,7 +2,7 @@
 
 #include <array>
 
-namespace crc {
+namespace auto_aim::crc {
 namespace {
 
 // CRC16 查找表（poly 0x1021，reflected 0x8408），只读常量
@@ -74,4 +74,4 @@ void append(std::uint8_t* data, std::size_t length)
     data[length - 1] = static_cast<std::uint8_t>(value >> 8);
 }
 
-}  // namespace crc
+}  // namespace auto_aim::crc

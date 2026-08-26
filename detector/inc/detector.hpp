@@ -13,7 +13,7 @@
 #include "number_classifier.hpp"
 #include "pnp_solver.hpp"
 
-namespace auto_aim
+namespace auto_aim::detector
 {
 
 // 帧源回调：填好一帧 FrameInput 返回 true；暂时没帧返回 false（线程 continue）
@@ -66,4 +66,4 @@ private:
     DetectionResult detect(const FrameInput& input);
 };
 
-} // namespace auto_aim
+} // namespace auto_aim::detector

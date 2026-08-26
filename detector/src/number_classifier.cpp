@@ -5,7 +5,7 @@
 
 #include <opencv2/imgproc.hpp>
 
-namespace auto_aim
+namespace auto_aim::detector
 {
 
 NumberClassifier::NumberClassifier(const NumberClassifierParams& params)
@@ -151,4 +151,4 @@ std::vector<Armor> NumberClassifier::classify(const cv::Mat& frame, const std::v
     return result;
 }
 
-} // namespace auto_aim
+} // namespace auto_aim::detector

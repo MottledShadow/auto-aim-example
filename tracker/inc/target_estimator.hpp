@@ -4,7 +4,7 @@
 
 #include "tracker_types.hpp"
 
-namespace auto_aim
+namespace auto_aim::tracker
 {
 
 // 整车状态估计器
@@ -48,4 +48,4 @@ private:
     std::uint64_t lastTimestamp_ = 0;    // 上一帧硬件时间戳(tick)，用于算 dt_
 };
 
-} // namespace auto_aim
+} // namespace auto_aim::tracker

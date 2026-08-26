@@ -6,7 +6,7 @@
 
 #include <opencv2/core.hpp>
 
-namespace auto_aim
+namespace auto_aim::detector
 {
 
 // ========== 数据模型 ==========
@@ -92,4 +92,4 @@ struct CameraCalibration
     std::string error;
 };
 
-} // namespace auto_aim
+} // namespace auto_aim::detector

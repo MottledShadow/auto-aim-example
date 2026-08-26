@@ -11,6 +11,9 @@
 #include <termios.h>
 #include <unistd.h>
 
+namespace auto_aim::serial
+{
+
 // 帧头 0x5A，之后 4 个 float32 小端 = w/x/y/z，末尾 2 字节小端 CRC16
 static const unsigned char kFrameHeader = 0x5A;
 static const int kPayloadSize = 16;   // 4 × float32
@@ -194,3 +197,5 @@ void Serial::receiveLoop() {
         slot_.publish(q);
     }
 }
+
+} // namespace auto_aim::serial

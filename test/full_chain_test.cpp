@@ -19,7 +19,7 @@ namespace
 {
 
 // 按 PnP 点序 left.top → right.top → right.bottom → left.bottom 连四条边画装甲框
-void drawArmorQuad(cv::Mat& vis, const auto_aim::Armor& armor, const cv::Scalar& color, int thickness)
+void drawArmorQuad(cv::Mat& vis, const auto_aim::detector::Armor& armor, const cv::Scalar& color, int thickness)
 {
     const cv::Point2f pts[4] = {
         armor.leftLight.top,
@@ -37,9 +37,9 @@ void drawArmorQuad(cv::Mat& vis, const auto_aim::Armor& armor, const cv::Scalar&
 int run()
 {
     // 1. 构造三件套（RAII，失败抛异常）：相机 + 串口(后台在收四元数) + 坐标变换
-    auto_aim::HikCamera camera;
-    Serial serial;
-    auto_aim::CoordinateTransform transform;   // 构造时自读手眼标定(config/hand_eye_calibration.yml)
+    auto_aim::hik_camera::HikCamera camera;
+    auto_aim::serial::Serial serial;
+    auto_aim::tracker::CoordinateTransform transform;   // 构造时自读手眼标定(config/hand_eye_calibration.yml)
     if (!transform.error().empty())
     {
         std::cerr << "warning: 未加载手眼标定，回退到几何重映射: " << transform.error() << '\n';
@@ -49,14 +49,14 @@ int run()
     auto_aim::LatestSlot<cv::Mat> frameSlot;
 
     // 3. 帧源回调：相机取帧 → 存图 → 填 FrameInput(图 + 硬件时间戳 + 当下四元数)，喂给识别线程
-    auto_aim::Detector detector([&](auto_aim::FrameInput& input) {
-        auto_aim::HikCameraFrame frame;
+    auto_aim::detector::Detector detector([&](auto_aim::detector::FrameInput& input) {
+        auto_aim::hik_camera::HikCameraFrame frame;
         if (camera.capture(frame) != MV_OK)
         {
             return false;   // 超时/出错，识别线程 continue
         }
         frameSlot.publish(frame.image);
-        const Quaternion q = serial.latest();
+        const auto_aim::serial::Quaternion q = serial.latest();
         input.image = frame.image;
         input.timestamp = frame.hardwareTimestamp;
         input.quaternion = cv::Vec4d(q.w, q.x, q.y, q.z);
@@ -73,7 +73,7 @@ int run()
     while (true)
     {
         // 5.0 取识别线程发布的最新结果 + 与之同源的最新图（相差至多一帧，冒烟测试足够）
-        auto_aim::DetectionResult det = detector.latest();
+        auto_aim::detector::DetectionResult det = detector.latest();
         cv::Mat display = frameSlot.latest();
         if (display.empty())
         {
@@ -82,7 +82,7 @@ int run()
         display = display.clone();
 
         // 5a. 坐标变换：相机系装甲板 → 世界系(FLU, mm)，world 与 det.armors 同序
-        std::vector<auto_aim::TrackedArmor> world = transform.toWorld(det.armors, det.quaternion);
+        std::vector<auto_aim::tracker::TrackedArmor> world = transform.toWorld(det.armors, det.quaternion);
 
         // 5b. 选目标：离画面中心最近 = distanceToPrincipalPoint 最小的那块
         int best = -1;
@@ -97,7 +97,7 @@ int run()
         }
 
         // 5c. 组目标帧并发送：检到就发选中块的世界系坐标，没检到发 detected=false
-        TargetOutput target;
+        auto_aim::serial::TargetOutput target;
         if (best >= 0)
         {
             target.detected = true;

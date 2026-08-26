@@ -8,7 +8,7 @@
 #include <system_error>
 #include <utility>
 
-namespace auto_aim
+namespace auto_aim::hik_camera
 {
 namespace
 {
@@ -255,4 +255,4 @@ void HikCamera::cleanup()
     stopCapture_ = false;
 }
 
-} // namespace auto_aim
+} // namespace auto_aim::hik_camera

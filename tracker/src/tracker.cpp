@@ -2,7 +2,7 @@
 
 #include <cmath>
 
-namespace auto_aim
+namespace auto_aim::tracker
 {
 
 Tracker::Tracker()
@@ -10,7 +10,7 @@ Tracker::Tracker()
 {
 }
 
-std::vector<TrackedArmor> Tracker::track(const DetectionResult& detection)
+std::vector<TrackedArmor> Tracker::track(const detector::DetectionResult& detection)
 {
     //第一步：把本帧相机系装甲板 + IMU 四元数转到世界系(与 detection.armors 同序不丢板)
     std::vector<TrackedArmor> tracked = transform_.toWorld(detection.armors, detection.quaternion);
@@ -142,4 +142,4 @@ std::vector<TrackedArmor> Tracker::track(const DetectionResult& detection)
     return tracked;
 }
 
-} // namespace auto_aim
+} // namespace auto_aim::tracker

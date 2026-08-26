@@ -6,7 +6,7 @@
 
 #include "detector_types.hpp"
 
-namespace auto_aim
+namespace auto_aim::tracker
 {
 
 // ========== 数据模型 ==========
@@ -14,7 +14,7 @@ namespace auto_aim
 // 进入追踪器的精简装甲板
 struct TrackedArmor
 {
-    ArmorType type = ArmorType::Unknown;
+    detector::ArmorType type = detector::ArmorType::Unknown;
     std::string number;
     cv::Vec3d position;      // 世界系 FLU 坐标, mm
     cv::Vec4d orientation;   // 世界系装甲板朝向四元数 (w, x, y, z)
@@ -45,4 +45,4 @@ struct ArmorMeasurement
 // 追踪状态机
 enum class TrackerState { Lost, Detecting, Tracking, TempLost };
 
-} // namespace auto_aim
+} // namespace auto_aim::tracker

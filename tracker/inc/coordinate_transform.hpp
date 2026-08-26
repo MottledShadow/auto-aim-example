@@ -8,7 +8,7 @@
 #include "detector_types.hpp"
 #include "tracker_types.hpp"
 
-namespace auto_aim
+namespace auto_aim::tracker
 {
 
 // 坐标变换：把 detector 的相机系装甲板转到世界系(FLU)
@@ -20,7 +20,7 @@ public:
     // 相机系装甲板 + 本帧 IMU 四元数(机体→世界) → 世界系精简装甲板
     // 手眼(cam→gimbal)把 tvec 从相机系搬到云台机体系，再由 IMU 四元数旋到世界系；
     // rvec(经 Rodrigues) 同样一路旋到世界系朝向四元数
-    std::vector<TrackedArmor> toWorld(const std::vector<Armor>& armors,
+    std::vector<TrackedArmor> toWorld(const std::vector<detector::Armor>& armors,
                                       const cv::Vec4d& quaternion) const;
 
     // 世界系朝向四元数(w,x,y,z) → 绕 z 轴 yaw 角(rad)
@@ -35,4 +35,4 @@ private:
     std::string error_;
 };
 
-} // namespace auto_aim
+} // namespace auto_aim::tracker

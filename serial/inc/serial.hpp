@@ -5,6 +5,9 @@
 
 #include "latest_slot.hpp"
 
+namespace auto_aim::serial
+{
+
 // 串口连接参数
 struct SerialConfig {
     std::string device = "/dev/ttyTHS1";
@@ -50,6 +53,8 @@ private:
     int fd_ = -1;
     std::thread thread_;
 
-    // 最新四元数槽：后台线程 publish、主线程 latest() 取（Serial 是全局命名空间，显式限定 auto_aim::）
-    auto_aim::LatestSlot<Quaternion> slot_;
+    // 最新四元数槽：后台线程 publish、主线程 latest() 取（LatestSlot 在 auto_aim 根，靠 enclosing 查找）
+    LatestSlot<Quaternion> slot_;
 };
+
+} // namespace auto_aim::serial

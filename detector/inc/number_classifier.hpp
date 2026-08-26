@@ -7,7 +7,7 @@
 
 #include "detector_types.hpp"
 
-namespace auto_aim
+namespace auto_aim::detector
 {
 
 // 数字分类参数：矫正尺寸、ROI、模型/标签路径、置信度阈值
@@ -56,4 +56,4 @@ private:
     std::string error_;
 };
 
-} // namespace auto_aim
+} // namespace auto_aim::detector

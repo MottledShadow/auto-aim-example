@@ -3,7 +3,7 @@
 #include <stdexcept>
 #include <utility>
 
-namespace auto_aim
+namespace auto_aim::detector
 {
 
 namespace
@@ -84,4 +84,4 @@ DetectionResult Detector::latest()
     return slot_.latest();
 }
 
-} // namespace auto_aim
+} // namespace auto_aim::detector

@@ -8,7 +8,7 @@
 
 #include <opencv2/imgproc.hpp>
 
-namespace auto_aim
+namespace auto_aim::debug_draw
 {
 
 //与 lightbar_detector.cpp 里 filterLightBars 一致的退化轮廓判定阈值
@@ -98,7 +98,7 @@ cv::Mat sideBySide(const cv::Mat& original, const cv::Mat& binary, int threshold
     return combined;
 }
 
-void drawCandidates(cv::Mat& vis, const std::vector<ContourCandidate>& candidates)
+void drawCandidates(cv::Mat& vis, const std::vector<detector::ContourCandidate>& candidates)
 {
     for (const auto& candidate : candidates)
     {
@@ -138,8 +138,8 @@ void drawCandidates(cv::Mat& vis, const std::vector<ContourCandidate>& candidate
 
 std::size_t drawLightBarMetrics(
     cv::Mat& vis,
-    const std::vector<ContourCandidate>& candidates,
-    const LightBarFilterParams& params)
+    const std::vector<detector::ContourCandidate>& candidates,
+    const detector::LightBarFilterParams& params)
 {
     const cv::Scalar green(0, 255, 0);
     const cv::Scalar red(0, 0, 255);
@@ -234,8 +234,8 @@ std::size_t drawLightBarMetrics(
 
 std::size_t drawArmorMetrics(
     cv::Mat& vis,
-    const std::vector<LightBar>& lightBars,
-    const LightBarMatcherParams& params)
+    const std::vector<detector::LightBar>& lightBars,
+    const detector::LightBarMatcherParams& params)
 {
     //在范围绿、超范围红
     const cv::Scalar green(0, 255, 0);
@@ -267,11 +267,11 @@ std::size_t drawArmorMetrics(
             {
                 std::swap(leftIndex, rightIndex);
             }
-            const LightBar& left = lightBars[leftIndex];
-            const LightBar& right = lightBars[rightIndex];
+            const detector::LightBar& left = lightBars[leftIndex];
+            const detector::LightBar& right = lightBars[rightIndex];
 
             //只画同色对：颜色相同且非 Unknown，其余不画
-            if (left.color == LightColor::Unknown || left.color != right.color)
+            if (left.color == detector::LightColor::Unknown || left.color != right.color)
             {
                 continue;
             }
@@ -307,9 +307,9 @@ std::size_t drawArmorMetrics(
             const bool metricsOk = lengthOk && angleOk && yOk && distOk;
 
             //大小分类：中心距比 ≥ 阈值判大装甲
-            const ArmorType type = (centerDistanceRatio >= params.largeArmorMinCenterDistanceRatio)
-                ? ArmorType::Large
-                : ArmorType::Small;
+            const detector::ArmorType type = (centerDistanceRatio >= params.largeArmorMinCenterDistanceRatio)
+                ? detector::ArmorType::Large
+                : detector::ArmorType::Small;
 
             //遮挡判据：装甲四边形内若夹着其它灯条则被拒（同 matchArmors）
             const std::vector<cv::Point2f> region = {
@@ -325,7 +325,7 @@ std::size_t drawArmorMetrics(
                 {
                     continue;
                 }
-                const LightBar& other = lightBars[k];
+                const detector::LightBar& other = lightBars[k];
                 if (cv::pointPolygonTest(region, other.top, false) >= 0.0 ||
                     cv::pointPolygonTest(region, other.bottom, false) >= 0.0 ||
                     cv::pointPolygonTest(region, other.center, false) >= 0.0)
@@ -356,7 +356,7 @@ std::size_t drawArmorMetrics(
             row.swatch = color;
             row.segments.emplace_back(
                 std::to_string(leftIndex) + "+" + std::to_string(rightIndex) +
-                    (pass ? " ok " : " NG ") + (type == ArmorType::Large ? "L " : "S "),
+                    (pass ? " ok " : " NG ") + (type == detector::ArmorType::Large ? "L " : "S "),
                 color);
             row.segments.emplace_back("LR" + format(lengthRatio, 2) + " ", lengthOk ? green : red);
             row.segments.emplace_back("ang" + format(angleDiff, 1) + " ", angleOk ? green : red);
@@ -388,4 +388,4 @@ void fitToScreen(cv::Mat& image, int screenW, int screenH)
     }
 }
 
-} // namespace auto_aim
+} // namespace auto_aim::debug_draw

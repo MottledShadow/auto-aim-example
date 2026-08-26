@@ -6,7 +6,7 @@
 
 #include "detector_types.hpp"
 
-namespace auto_aim
+namespace auto_aim::detector
 {
 
 // ========== 调参结构体 ==========
@@ -52,4 +52,4 @@ public:
     std::vector<Armor> matchArmors(const std::vector<LightBar>& lightBars) const;
 };
 
-} // namespace auto_aim
+} // namespace auto_aim::detector

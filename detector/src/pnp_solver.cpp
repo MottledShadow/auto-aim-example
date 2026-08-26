@@ -6,7 +6,7 @@
 #include <opencv2/calib3d.hpp>
 #include <opencv2/core/persistence.hpp>
 
-namespace auto_aim
+namespace auto_aim::detector
 {
 
 static CameraCalibration loadCalibration()
@@ -123,4 +123,4 @@ std::vector<Armor> PnpSolver::solve(const std::vector<Armor>& armors) const
     return solved;
 }
 
-} // namespace auto_aim
+} // namespace auto_aim::detector

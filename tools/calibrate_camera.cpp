@@ -300,8 +300,8 @@ bool solveAndSaveHandEye(
 int run()
 {
     // 构造即初始化，失败抛异常：相机 + 串口(IMU 四元数)
-    auto_aim::HikCamera camera;
-    Serial serial;
+    auto_aim::hik_camera::HikCamera camera;
+    auto_aim::serial::Serial serial;
 
     // 预览用全分辨率显示，窗口可缩放且保持宽高比；给个 1080p 屏上留边的初始尺寸
     cv::namedWindow("calibrate_camera", cv::WINDOW_NORMAL | cv::WINDOW_KEEPRATIO);
@@ -320,7 +320,7 @@ int run()
     bool intrinsicsDone = false;
     while (!intrinsicsDone)
     {
-        auto_aim::HikCameraFrame frame;
+        auto_aim::hik_camera::HikCameraFrame frame;
         const int grabResult = camera.capture(frame);
         if (grabResult != MV_OK)
         {
@@ -398,14 +398,14 @@ int run()
 
     // 采集时同样只拍不检测；每张图要连同当下的云台四元数一起存，供 ENTER 批处理解算
     std::vector<cv::Mat> heShots;
-    std::vector<Quaternion> heQuats;
+    std::vector<auto_aim::serial::Quaternion> heQuats;
 
     std::cout << "hand-eye stage 2/2: 每次采集前转动云台改变朝向; "
                  "SPACE capture, u undo, ENTER detect+solve, ESC quit\n";
 
     while (true)
     {
-        auto_aim::HikCameraFrame frame;
+        auto_aim::hik_camera::HikCameraFrame frame;
         const int grabResult = camera.capture(frame);
         if (grabResult != MV_OK)
         {
@@ -414,7 +414,7 @@ int run()
         }
 
         // 预览：显示当前帧 + 实时四元数 + 张数，不做检测
-        const Quaternion liveQ = serial.latest();
+        const auto_aim::serial::Quaternion liveQ = serial.latest();
         cv::Mat display = frame.image.clone();
         cv::putText(
             display,

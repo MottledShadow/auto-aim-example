@@ -9,7 +9,7 @@
 #include "coordinate_transform.hpp"
 #include "target_estimator.hpp"
 
-namespace auto_aim
+namespace auto_aim::tracker
 {
 
 // 追踪器 facade
@@ -22,7 +22,7 @@ public:
     // 入参 DetectionResult 带相机系装甲板 + 时间戳(设备 tick) + IMU 四元数；
     // 估计器在 newFrame 里用两帧时间戳之差算 dt(tick→秒 系数见 estimator_.tickToSecond)。
     // 返回本帧世界系装甲板，整车状态走 state()
-    std::vector<TrackedArmor> track(const DetectionResult& detection);
+    std::vector<TrackedArmor> track(const detector::DetectionResult& detection);
 
     bool initialized() const { return trackerState_ != TrackerState::Lost; }
     const TargetState& state() const { return estimator_.state(); }
@@ -46,4 +46,4 @@ private:
     std::string trackedNumber_;   // 当前锁定目标的数字
 };
 
-} // namespace auto_aim
+} // namespace auto_aim::tracker

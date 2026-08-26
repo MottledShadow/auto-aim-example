@@ -10,7 +10,7 @@
 
 #include "MvCameraControl.h"
 
-namespace auto_aim
+namespace auto_aim::hik_camera
 {
 
 inline constexpr unsigned int kDefaultHikImageNodeCount = 5;
@@ -62,4 +62,4 @@ private:
     int captureResult_ = MV_OK;
 };
 
-} // namespace auto_aim
+} // namespace auto_aim::hik_camera

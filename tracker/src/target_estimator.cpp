@@ -2,7 +2,7 @@
 
 #include <cmath>
 
-namespace auto_aim
+namespace auto_aim::tracker
 {
 
 void TargetEstimator::newFrame(std::uint64_t timestamp)
@@ -88,4 +88,4 @@ void TargetEstimator::reanchorYawZ(double yaw, double z)
     state_.z = z;
 }
 
-} // namespace auto_aim
+} // namespace auto_aim::tracker
