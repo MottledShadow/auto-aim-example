@@ -8,13 +8,24 @@ binary="$build_dir/detector_tuner"
 remote_dir="auto-aim"
 mode="${1:-}"
 
-if [[ "$mode" != "validate" && "$mode" != "scan" ]]; then
-    echo "Usage: $0 validate"
+if [[ "$mode" != "annotate" && "$mode" != "validate" && "$mode" != "scan" ]]; then
+    echo "Usage: $0 annotate [--force]"
+    echo "       $0 validate"
     echo "       $0 scan"
     exit 2
 fi
 
-if [[ -n "${2:-}" ]]; then
+annotate_option="${2:-}"
+if [[ "$mode" == "annotate" ]]; then
+    if [[ -n "$annotate_option" && "$annotate_option" != "--force" ]]; then
+        echo "The annotate mode only accepts --force." >&2
+        exit 2
+    fi
+    if [[ -n "${3:-}" ]]; then
+        echo "The annotate mode accepts at most one option." >&2
+        exit 2
+    fi
+elif [[ -n "$annotate_option" ]]; then
     echo "The $mode mode takes no additional arguments." >&2
     exit 2
 fi
@@ -30,6 +41,23 @@ cmake --build "$build_dir" --target detector_tuner --parallel
 echo "Deploying detector_tuner..."
 ssh "$target" "mkdir -p \"\$HOME/$remote_dir\""
 scp "$binary" "$target:$remote_dir/detector_tuner"
+
+if [[ "$mode" == "annotate" ]]; then
+    echo "Selecting target boxes on the Jetson display..."
+    ssh -t "$target" "
+set -e
+cd \"\$HOME/$remote_dir\"
+chmod u+x detector_tuner
+
+runtime_dir=\"/run/user/\$(id -u)\"
+
+DISPLAY=:0 \\
+XAUTHORITY=\"\$runtime_dir/gdm/Xauthority\" \\
+XDG_RUNTIME_DIR=\"\$runtime_dir\" \\
+./detector_tuner annotate captures captures/annotations.csv $annotate_option
+"
+    exit 0
+fi
 
 if [[ "$mode" == "validate" ]]; then
     echo "Validating target-box annotations on Jetson..."

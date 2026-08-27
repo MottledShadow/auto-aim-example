@@ -104,6 +104,46 @@ TEST(TuningAnnotations, RoundTripsAndSortsBoxCsv)
     EXPECT_EQ(output[1].targetColor, LightColor::Blue);
 }
 
+TEST(TuningAnnotations, WorklistSkipsExistingUnlessForced)
+{
+    const std::vector<std::string> filenames = {
+        "snapshot_0.png", "snapshot_1.png", "snapshot_2.png"};
+    const std::vector<Annotation> annotations = {
+        makeAnnotation("snapshot_0.png"),
+        makeAnnotation("snapshot_2.png"),
+    };
+
+    EXPECT_EQ(
+        auto_aim::detector::tuning::annotationWorklist(
+            filenames, annotations, false),
+        (std::vector<std::string>{"snapshot_1.png"}));
+    EXPECT_EQ(
+        auto_aim::detector::tuning::annotationWorklist(
+            filenames, annotations, true),
+        filenames);
+}
+
+TEST(TuningAnnotations, UpsertReplacesExistingRowAndKeepsNaturalOrder)
+{
+    std::vector<Annotation> annotations = {
+        makeAnnotation("snapshot_10.png"),
+        makeAnnotation("snapshot_2.png", LightColor::Red),
+    };
+    const Annotation replacement =
+        makeAnnotation("snapshot_2.png", LightColor::Blue, 20, 30, 40, 50);
+
+    auto_aim::detector::tuning::upsertAnnotation(annotations, replacement);
+    auto_aim::detector::tuning::upsertAnnotation(
+        annotations, makeAnnotation("snapshot_1.png"));
+
+    ASSERT_EQ(annotations.size(), 3U);
+    EXPECT_EQ(annotations[0].filename, "snapshot_1.png");
+    EXPECT_EQ(annotations[1].filename, "snapshot_2.png");
+    EXPECT_EQ(annotations[1].targetColor, LightColor::Blue);
+    EXPECT_EQ(annotations[1].targetBox, cv::Rect2f(20, 30, 40, 50));
+    EXPECT_EQ(annotations[2].filename, "snapshot_10.png");
+}
+
 TEST(TuningAnnotations, RejectsDuplicateInvalidColorAndWrongHeader)
 {
     TemporaryDirectory temporary;

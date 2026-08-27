@@ -18,6 +18,7 @@
 
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
+#include <opencv2/highgui.hpp>
 
 #include "debug_draw.hpp"
 
@@ -118,6 +119,135 @@ cv::Mat loadBgrImage(const fs::path& path)
         throw std::runtime_error("image must be 8-bit BGR/RGBA: " + path.string());
     }
     return image;
+}
+
+LightColor promptColor(LightColor current)
+{
+    while (true)
+    {
+        std::cout << "target color [r/b";
+        if (current == LightColor::Red || current == LightColor::Blue)
+        {
+            std::cout << ", Enter keeps "
+                      << auto_aim::detector::tuning::colorName(current);
+        }
+        std::cout << "]: " << std::flush;
+
+        std::string input;
+        if (!std::getline(std::cin, input))
+        {
+            throw std::runtime_error("stdin closed while reading target color");
+        }
+        if (input.empty() && (current == LightColor::Red || current == LightColor::Blue))
+        {
+            return current;
+        }
+        if (input == "r" || input == "red")
+        {
+            return LightColor::Red;
+        }
+        if (input == "b" || input == "blue")
+        {
+            return LightColor::Blue;
+        }
+        std::cout << "enter r for red or b for blue\n";
+    }
+}
+
+int annotateDataset(
+    const fs::path& captureDirectory,
+    const fs::path& annotationPath,
+    bool force)
+{
+    const std::vector<fs::path> paths = snapshotPaths(captureDirectory);
+    std::vector<Annotation> annotations =
+        auto_aim::detector::tuning::loadAnnotations(annotationPath.string());
+
+    std::map<std::string, fs::path> pathByFilename;
+    std::vector<std::string> filenames;
+    filenames.reserve(paths.size());
+    for (const fs::path& path : paths)
+    {
+        const std::string filename = path.filename().string();
+        pathByFilename.emplace(filename, path);
+        filenames.push_back(filename);
+    }
+    for (const Annotation& annotation : annotations)
+    {
+        const auto found = pathByFilename.find(annotation.filename);
+        if (found == pathByFilename.end())
+        {
+            throw std::runtime_error(
+                "annotation references missing capture: " + annotation.filename);
+        }
+        const cv::Mat image = loadBgrImage(found->second);
+        auto_aim::detector::tuning::validateAnnotation(annotation, image.size());
+    }
+
+    const std::vector<std::string> worklist =
+        auto_aim::detector::tuning::annotationWorklist(filenames, annotations, force);
+    if (worklist.empty())
+    {
+        std::cout << "all " << paths.size() << " snapshots are already annotated\n";
+        return 0;
+    }
+
+    std::cout << "annotating " << worklist.size() << " of " << paths.size()
+              << " snapshots; Enter/Space accepts ROI, c cancels ROI\n";
+    for (std::size_t index = 0; index < worklist.size(); ++index)
+    {
+        const std::string& filename = worklist[index];
+        const cv::Mat image = loadBgrImage(pathByFilename.at(filename));
+        LightColor currentColor = LightColor::Unknown;
+        const auto existing = std::find_if(
+            annotations.begin(), annotations.end(), [&](const Annotation& annotation) {
+                return annotation.filename == filename;
+            });
+        if (existing != annotations.end())
+        {
+            currentColor = existing->targetColor;
+        }
+
+        cv::Rect selected;
+        while (selected.width <= 0 || selected.height <= 0)
+        {
+            const std::string windowName =
+                "annotate " + std::to_string(index + 1) + "/" +
+                std::to_string(worklist.size()) + " " + filename;
+            selected = cv::selectROI(windowName, image, true, false, true);
+            cv::destroyWindow(windowName);
+            if (selected.width > 0 && selected.height > 0)
+            {
+                break;
+            }
+
+            std::cout << "selection canceled for " << filename
+                      << "; [r]etry or [q]uit: " << std::flush;
+            std::string action;
+            if (!std::getline(std::cin, action) || action == "q" || action == "quit")
+            {
+                std::cout << "annotation stopped; completed rows remain saved\n";
+                return 0;
+            }
+        }
+
+        Annotation annotation;
+        annotation.filename = filename;
+        annotation.targetColor = promptColor(currentColor);
+        annotation.targetBox = cv::Rect2f(selected);
+        auto_aim::detector::tuning::validateAnnotation(annotation, image.size());
+        auto_aim::detector::tuning::upsertAnnotation(annotations, annotation);
+        auto_aim::detector::tuning::saveAnnotations(annotationPath.string(), annotations);
+        std::cout << "saved " << filename << " "
+                  << auto_aim::detector::tuning::colorName(annotation.targetColor)
+                  << " box=" << selected.x << ',' << selected.y << ','
+                  << selected.width << ',' << selected.height << '\n';
+    }
+
+    cv::destroyAllWindows();
+    std::cout << "annotation complete: " << annotations.size() << " rows saved to "
+              << annotationPath << '\n';
+    return 0;
 }
 
 std::vector<DatasetImage> loadDataset(
@@ -629,6 +759,7 @@ void usage(const char* executable)
 {
     std::cerr
         << "Usage:\n"
+        << "  " << executable << " annotate <capture_dir> <annotations.csv> [--force]\n"
         << "  " << executable << " validate <capture_dir> <annotations.csv>\n"
         << "  " << executable << " scan <capture_dir> <annotations.csv> <output_dir>\n";
 }
@@ -644,6 +775,16 @@ try
         return 2;
     }
     const std::string mode = argv[1];
+    if (mode == "annotate" && (argc == 4 || argc == 5))
+    {
+        const bool force = argc == 5;
+        if (force && std::string(argv[4]) != "--force")
+        {
+            usage(argv[0]);
+            return 2;
+        }
+        return annotateDataset(argv[2], argv[3], force);
+    }
     if (mode == "validate" && argc == 4)
     {
         return validateDataset(argv[2], argv[3]);

@@ -95,6 +95,11 @@ LightColor parseColor(const std::string& value);
 std::vector<Annotation> loadAnnotations(const std::string& path);
 void saveAnnotations(const std::string& path, const std::vector<Annotation>& annotations);
 void validateAnnotation(const Annotation& annotation, const cv::Size& imageSize = {});
+std::vector<std::string> annotationWorklist(
+    const std::vector<std::string>& filenames,
+    const std::vector<Annotation>& annotations,
+    bool force);
+void upsertAnnotation(std::vector<Annotation>& annotations, const Annotation& annotation);
 
 ImageOutcome evaluateImage(
     const Annotation& annotation,

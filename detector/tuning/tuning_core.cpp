@@ -389,6 +389,46 @@ void validateAnnotation(const Annotation& annotation, const cv::Size& imageSize)
     }
 }
 
+std::vector<std::string> annotationWorklist(
+    const std::vector<std::string>& filenames,
+    const std::vector<Annotation>& annotations,
+    bool force)
+{
+    std::vector<std::string> result;
+    for (const std::string& filename : filenames)
+    {
+        const bool alreadyAnnotated = std::any_of(
+            annotations.begin(), annotations.end(), [&](const Annotation& annotation) {
+                return annotation.filename == filename;
+            });
+        if (force || !alreadyAnnotated)
+        {
+            result.push_back(filename);
+        }
+    }
+    return result;
+}
+
+void upsertAnnotation(std::vector<Annotation>& annotations, const Annotation& annotation)
+{
+    validateAnnotation(annotation);
+    const auto found = std::find_if(
+        annotations.begin(), annotations.end(), [&](const Annotation& existing) {
+            return existing.filename == annotation.filename;
+        });
+    if (found == annotations.end())
+    {
+        annotations.push_back(annotation);
+    }
+    else
+    {
+        *found = annotation;
+    }
+    std::sort(annotations.begin(), annotations.end(), [](const Annotation& lhs, const Annotation& rhs) {
+        return naturalLess(lhs.filename, rhs.filename);
+    });
+}
+
 ImageOutcome evaluateImage(
     const Annotation& annotation,
     const std::vector<Armor>& armors,
