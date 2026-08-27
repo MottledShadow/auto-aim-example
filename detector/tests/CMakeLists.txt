@@ -18,12 +18,15 @@ add_subdirectory(
 
 add_executable(lightbar_detector_test
     lightbar_detector_test.cpp
+    tuning_core_test.cpp
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/lightbar_detector.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../tuning/tuning_core.cpp"
 )
 
 target_include_directories(lightbar_detector_test
     PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/../inc"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../tuning"
         ${OpenCV_INCLUDE_DIRS}
 )
 
