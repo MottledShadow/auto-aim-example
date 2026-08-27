@@ -1,19 +1,81 @@
 #include "lightbar_detector.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <string>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include <opencv2/imgproc.hpp>
 
 namespace
 {
 
 using auto_aim::detector::Armor;
 using auto_aim::detector::ArmorType;
+using auto_aim::detector::ContourCandidate;
 using auto_aim::detector::LightBar;
 using auto_aim::detector::LightColor;
 using auto_aim::detector::LightbarDetector;
+using auto_aim::detector::PreprocessResult;
+
+constexpr int kFrameSize = 320;
+
+cv::Mat makeFrame(const cv::Scalar& color = cv::Scalar(80, 80, 255))
+{
+    return cv::Mat(kFrameSize, kFrameSize, CV_8UC3, color).clone();
+}
+
+ContourCandidate makeCandidate(
+    float centerX,
+    float centerY,
+    float width,
+    float height,
+    double area,
+    float lineAngleDeg = 0.0F,
+    bool zeroDirection = false)
+{
+    const cv::RotatedRect rect(
+        cv::Point2f(centerX, centerY),
+        cv::Size2f(width, height),
+        0.0F);
+    cv::Point2f vertices[4];
+    rect.points(vertices);
+
+    std::vector<cv::Point> contour;
+    contour.reserve(4);
+    for (const cv::Point2f& vertex : vertices)
+    {
+        contour.emplace_back(cvRound(vertex.x), cvRound(vertex.y));
+    }
+
+    cv::Vec4f centerLine;
+    if (zeroDirection)
+    {
+        centerLine = cv::Vec4f(0.0F, 0.0F, centerX, centerY);
+    }
+    else
+    {
+        const float radians = lineAngleDeg * static_cast<float>(CV_PI / 180.0);
+        centerLine = cv::Vec4f(
+            std::sin(radians),
+            std::cos(radians),
+            centerX,
+            centerY);
+    }
+
+    return ContourCandidate{contour, rect, centerLine, area};
+}
+
+bool hasCandidateNear(const PreprocessResult& result, const cv::Point2f& expectedCenter)
+{
+    return std::any_of(
+        result.candidates.begin(),
+        result.candidates.end(),
+        [&](const ContourCandidate& candidate) {
+            return cv::norm(candidate.rect.center - expectedCenter) < 0.1;
+        });
+}
 
 LightBar makeVerticalLight(
     float centerX,
@@ -35,6 +97,183 @@ bool connects(const Armor& armor, float leftX, float rightX)
 {
     return armor.leftLight.center.x == leftX && armor.rightLight.center.x == rightX;
 }
+
+TEST(LightbarPreprocess, ThresholdsPixelsAndBuildsOnlyValidContours)
+{
+    cv::Mat frame = cv::Mat::zeros(160, 160, CV_8UC3);
+    cv::rectangle(frame, cv::Rect(20, 20, 8, 32), cv::Scalar(80, 80, 255), cv::FILLED);
+    cv::rectangle(frame, cv::Rect(60, 20, 8, 32), cv::Scalar(255, 80, 80), cv::FILLED);
+    cv::rectangle(frame, cv::Rect(100, 20, 8, 32), cv::Scalar(0, 0, 100), cv::FILLED);
+    frame.at<cv::Vec3b>(140, 140) = cv::Vec3b(255, 255, 255);
+
+    const LightbarDetector detector;
+    const PreprocessResult result = detector.preprocess(frame);
+
+    EXPECT_EQ(result.binary.type(), CV_8UC1);
+    EXPECT_EQ(result.binary.size(), frame.size());
+    EXPECT_EQ(result.binary.at<std::uint8_t>(35, 23), 255);
+    EXPECT_EQ(result.binary.at<std::uint8_t>(35, 63), 255);
+    EXPECT_EQ(result.binary.at<std::uint8_t>(35, 103), 0);
+    EXPECT_EQ(result.binary.at<std::uint8_t>(0, 0), 0);
+    EXPECT_EQ(result.binary.at<std::uint8_t>(140, 140), 255);
+
+    ASSERT_EQ(result.candidates.size(), 2U);
+    EXPECT_TRUE(hasCandidateNear(result, cv::Point2f(23.5F, 35.5F)));
+    EXPECT_TRUE(hasCandidateNear(result, cv::Point2f(63.5F, 35.5F)));
+    for (const ContourCandidate& candidate : result.candidates)
+    {
+        EXPECT_GT(candidate.area, 0.0);
+        EXPECT_GT(std::hypot(candidate.centerLine[0], candidate.centerLine[1]), 0.0);
+    }
+}
+
+TEST(LightbarPreprocess, UsesStrictGreaterThanBinaryThreshold)
+{
+    const cv::Mat frame(3, 3, CV_8UC3, cv::Scalar(100, 100, 100));
+    LightbarDetector detector;
+
+    detector.binaryThreshold = 99;
+    EXPECT_EQ(detector.preprocess(frame).binary.at<std::uint8_t>(1, 1), 255);
+
+    detector.binaryThreshold = 100;
+    EXPECT_EQ(detector.preprocess(frame).binary.at<std::uint8_t>(1, 1), 0);
+}
+
+TEST(LightbarFilter, KeepsValidRedCandidateAndBuildsOrderedEndpoints)
+{
+    const cv::Mat frame = makeFrame();
+    PreprocessResult pre;
+    pre.candidates.push_back(makeCandidate(80.0F, 80.0F, 4.0F, 20.0F, 80.0));
+    const LightbarDetector detector;
+
+    const std::vector<LightBar> lights = detector.filterLightBars(frame, pre);
+
+    ASSERT_EQ(lights.size(), 1U);
+    EXPECT_EQ(lights[0].color, LightColor::Red);
+    EXPECT_FLOAT_EQ(lights[0].center.x, 80.0F);
+    EXPECT_FLOAT_EQ(lights[0].center.y, 80.0F);
+    EXPECT_FLOAT_EQ(lights[0].length, 20.0F);
+    EXPECT_NEAR(lights[0].angle, 0.0F, 1e-5F);
+    EXPECT_NEAR(lights[0].top.x, 80.0F, 1e-5F);
+    EXPECT_NEAR(lights[0].top.y, 70.0F, 1e-5F);
+    EXPECT_NEAR(lights[0].bottom.x, 80.0F, 1e-5F);
+    EXPECT_NEAR(lights[0].bottom.y, 90.0F, 1e-5F);
+    EXPECT_LT(lights[0].top.y, lights[0].bottom.y);
+}
+
+TEST(LightbarFilter, SelectsOnlyTheConfiguredColorAfterPreprocess)
+{
+    cv::Mat frame = cv::Mat::zeros(120, 140, CV_8UC3);
+    cv::rectangle(frame, cv::Rect(20, 30, 8, 32), cv::Scalar(80, 80, 255), cv::FILLED);
+    cv::rectangle(frame, cv::Rect(90, 30, 8, 32), cv::Scalar(255, 80, 80), cv::FILLED);
+
+    LightbarDetector detector;
+    const PreprocessResult pre = detector.preprocess(frame);
+    ASSERT_EQ(pre.candidates.size(), 2U);
+
+    const std::vector<LightBar> redLights = detector.filterLightBars(frame, pre);
+    ASSERT_EQ(redLights.size(), 1U);
+    EXPECT_EQ(redLights[0].color, LightColor::Red);
+    EXPECT_NEAR(redLights[0].center.x, 23.5F, 0.1F);
+
+    detector.filterParams.targetColor = LightColor::Blue;
+    const std::vector<LightBar> blueLights = detector.filterLightBars(frame, pre);
+    ASSERT_EQ(blueLights.size(), 1U);
+    EXPECT_EQ(blueLights[0].color, LightColor::Blue);
+    EXPECT_NEAR(blueLights[0].center.x, 93.5F, 0.1F);
+}
+
+TEST(LightbarFilter, RejectsCandidateWithEqualRedAndBlueMeans)
+{
+    const cv::Mat frame = makeFrame(cv::Scalar(180, 80, 180));
+    PreprocessResult pre;
+    pre.candidates.push_back(makeCandidate(80.0F, 80.0F, 4.0F, 20.0F, 80.0));
+    const LightbarDetector detector;
+
+    EXPECT_TRUE(detector.filterLightBars(frame, pre).empty());
+}
+
+TEST(LightbarFilter, IncludesCandidateAtExactComputedAngleLimit)
+{
+    const cv::Mat frame = makeFrame();
+    PreprocessResult pre;
+    pre.candidates.push_back(
+        makeCandidate(80.0F, 80.0F, 4.0F, 20.0F, 80.0, 15.0F));
+
+    const double vx = pre.candidates[0].centerLine[0];
+    const double vy = pre.candidates[0].centerLine[1];
+    const double angle = std::acos(std::abs(vy) / std::hypot(vx, vy)) * 180.0 / CV_PI;
+
+    LightbarDetector detector;
+    detector.filterParams.maxLineAngleDeg = angle;
+    EXPECT_EQ(detector.filterLightBars(frame, pre).size(), 1U);
+
+    detector.filterParams.maxLineAngleDeg = std::nextafter(angle, 0.0);
+    EXPECT_TRUE(detector.filterLightBars(frame, pre).empty());
+}
+
+struct FilterBoundaryCase
+{
+    std::string name;
+    ContourCandidate candidate;
+    bool shouldPass = false;
+};
+
+class LightbarFilterBoundaryTest : public testing::TestWithParam<FilterBoundaryCase>
+{
+};
+
+TEST_P(LightbarFilterBoundaryTest, AppliesGeometryLimits)
+{
+    const FilterBoundaryCase& testCase = GetParam();
+    const cv::Mat frame = makeFrame();
+    PreprocessResult pre;
+    pre.candidates.push_back(testCase.candidate);
+    const LightbarDetector detector;
+
+    const std::vector<LightBar> lights = detector.filterLightBars(frame, pre);
+
+    EXPECT_EQ(!lights.empty(), testCase.shouldPass);
+    EXPECT_LE(lights.size(), 1U);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    FilterLimits,
+    LightbarFilterBoundaryTest,
+    testing::Values(
+        FilterBoundaryCase{
+            "AreaAtMinimum", makeCandidate(80.0F, 80.0F, 2.0F, 10.0F, 10.0), true},
+        FilterBoundaryCase{
+            "AreaBelowMinimum", makeCandidate(80.0F, 80.0F, 2.0F, 9.0F, 9.0), false},
+        FilterBoundaryCase{
+            "AreaAtMaximum", makeCandidate(160.0F, 160.0F, 50.0F, 120.0F, 6000.0), true},
+        FilterBoundaryCase{
+            "AreaAboveMaximum", makeCandidate(160.0F, 160.0F, 50.0F, 120.0F, 6001.0), false},
+        FilterBoundaryCase{
+            "AspectRatioAtMinimum", makeCandidate(80.0F, 80.0F, 10.0F, 20.0F, 200.0), true},
+        FilterBoundaryCase{
+            "AspectRatioBelowMinimum", makeCandidate(80.0F, 80.0F, 10.0F, 19.9F, 199.0), false},
+        FilterBoundaryCase{
+            "AspectRatioAtMaximum", makeCandidate(80.0F, 80.0F, 4.0F, 60.0F, 240.0), true},
+        FilterBoundaryCase{
+            "AspectRatioAboveMaximum", makeCandidate(80.0F, 80.0F, 4.0F, 60.4F, 241.6), false},
+        FilterBoundaryCase{
+            "AngleAtMinimum", makeCandidate(80.0F, 80.0F, 4.0F, 20.0F, 80.0, 0.0F), true},
+        FilterBoundaryCase{
+            "AngleAboveMaximum", makeCandidate(80.0F, 80.0F, 4.0F, 20.0F, 80.0, 15.1F), false},
+        FilterBoundaryCase{
+            "FillRatioAtMinimum", makeCandidate(80.0F, 80.0F, 10.0F, 20.0F, 100.0), true},
+        FilterBoundaryCase{
+            "FillRatioBelowMinimum", makeCandidate(80.0F, 80.0F, 10.0F, 20.0F, 99.8), false},
+        FilterBoundaryCase{
+            "FillRatioAtMaximum", makeCandidate(80.0F, 80.0F, 4.0F, 20.0F, 80.0), true},
+        FilterBoundaryCase{
+            "ZeroWidth", makeCandidate(80.0F, 80.0F, 0.0F, 20.0F, 10.0), false},
+        FilterBoundaryCase{
+            "ZeroDirection", makeCandidate(80.0F, 80.0F, 4.0F, 20.0F, 80.0, 0.0F, true), false}),
+    [](const testing::TestParamInfo<FilterBoundaryCase>& info) {
+        return info.param.name;
+    });
 
 TEST(LightbarMatcher, NormalizesInputOrderAndBuildsSmallArmor)
 {
