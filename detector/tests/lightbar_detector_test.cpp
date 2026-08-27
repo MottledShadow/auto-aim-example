@@ -106,7 +106,8 @@ TEST(LightbarPreprocess, ThresholdsPixelsAndBuildsOnlyValidContours)
     cv::rectangle(frame, cv::Rect(100, 20, 8, 32), cv::Scalar(0, 0, 100), cv::FILLED);
     frame.at<cv::Vec3b>(140, 140) = cv::Vec3b(255, 255, 255);
 
-    const LightbarDetector detector;
+    LightbarDetector detector;
+    detector.binaryThreshold = 90;
     const PreprocessResult result = detector.preprocess(frame);
 
     EXPECT_EQ(result.binary.type(), CV_8UC1);
@@ -168,6 +169,7 @@ TEST(LightbarFilter, SelectsOnlyTheConfiguredColorAfterPreprocess)
     cv::rectangle(frame, cv::Rect(90, 30, 8, 32), cv::Scalar(255, 80, 80), cv::FILLED);
 
     LightbarDetector detector;
+    detector.binaryThreshold = 90;
     const PreprocessResult pre = detector.preprocess(frame);
     ASSERT_EQ(pre.candidates.size(), 2U);
 
@@ -229,7 +231,15 @@ TEST_P(LightbarFilterBoundaryTest, AppliesGeometryLimits)
     const cv::Mat frame = makeFrame();
     PreprocessResult pre;
     pre.candidates.push_back(testCase.candidate);
-    const LightbarDetector detector;
+    LightbarDetector detector;
+    detector.filterParams.minArea = 10.0;
+    detector.filterParams.maxArea = 6000.0;
+    detector.filterParams.minAspectRatio = 2.0;
+    detector.filterParams.maxAspectRatio = 15.0;
+    detector.filterParams.minLineAngleDeg = 0.0;
+    detector.filterParams.maxLineAngleDeg = 15.0;
+    detector.filterParams.minFillRatio = 0.5;
+    detector.filterParams.maxFillRatio = 1.0;
 
     const std::vector<LightBar> lights = detector.filterLightBars(frame, pre);
 

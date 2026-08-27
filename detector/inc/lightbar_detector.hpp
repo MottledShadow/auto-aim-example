@@ -14,12 +14,12 @@ namespace auto_aim::detector
 struct LightBarFilterParams
 {
     double minArea = 10.0;
-    double maxArea = 6000.0;
-    double minAspectRatio = 2.0;
+    double maxArea = 6500.0;
+    double minAspectRatio = 2.5;
     double maxAspectRatio = 15.0;
     double minLineAngleDeg = 0.0;
     double maxLineAngleDeg = 15.0;
-    double minFillRatio = 0.5;
+    double minFillRatio = 0.4;
     double maxFillRatio = 1.0;
     LightColor targetColor = LightColor::Red;  // 目标灯条颜色，非此色的灯条舍弃
 };
@@ -39,7 +39,7 @@ struct LightBarMatcherParams
 class LightbarDetector
 {
 public:
-    int binaryThreshold = 90;  // 灰度二值化阈值
+    int binaryThreshold = 100;  // 灰度二值化阈值
     LightBarFilterParams filterParams;
     LightBarMatcherParams matcherParams;
 
