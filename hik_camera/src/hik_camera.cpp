@@ -77,21 +77,12 @@ int convertToBgr(void* handle, const MV_FRAME_OUT& source, cv::Mat& destination)
 
 } // namespace
 
-HikCamera::HikCamera(unsigned int nodeCount, float exposureTimeUs)
-    : HikCamera(HikCameraOptions{
-          nodeCount,
-          exposureTimeUs,
-          HikTimestampMode::RequireCalibration,
-          kDefaultHikTimestampCalibrationPath})
+HikCamera::HikCamera(HikCameraOptions options)
+    : cameraOptions_(std::move(options))
 {
-}
-
-HikCamera::HikCamera(const HikCameraOptions& options)
-{
-    timestampMode_ = options.timestampMode;
-    if (timestampMode_ == HikTimestampMode::RequireCalibration)
+    if (cameraOptions_.timestampMode == HikTimestampMode::RequireCalibration)
     {
-        tickToNanoseconds_ = loadTickToNanoseconds(options.timestampCalibrationPath);
+        tickToNanoseconds_ = loadTickToNanoseconds(cameraOptions_.timestampCalibrationPath);
     }
 
     // 任一步失败：回滚已开的句柄/设备/SDK，再带步骤名+MV 码抛异常
@@ -121,9 +112,11 @@ HikCamera::HikCamera(const HikCameraOptions& options)
     deviceOpened_ = true;
 
     check(MV_CC_SetEnumValue(handle_, "ExposureAuto", 0), "SetEnumValue(ExposureAuto)");
-    check(MV_CC_SetFloatValue(handle_, "ExposureTime", options.exposureTimeUs), "SetFloatValue(ExposureTime)");
+    check(
+        MV_CC_SetFloatValue(handle_, "ExposureTime", cameraOptions_.exposureTimeUs),
+        "SetFloatValue(ExposureTime)");
     check(MV_CC_SetEnumValue(handle_, "TriggerMode", 0), "SetEnumValue(TriggerMode)");
-    check(MV_CC_SetImageNodeNum(handle_, options.nodeCount), "MV_CC_SetImageNodeNum");
+    check(MV_CC_SetImageNodeNum(handle_, cameraOptions_.nodeCount), "MV_CC_SetImageNodeNum");
     check(MV_CC_SetGrabStrategy(handle_, MV_GrabStrategy_LatestImagesOnly), "MV_CC_SetGrabStrategy");
 
     check(MV_CC_StartGrabbing(handle_), "MV_CC_StartGrabbing");
@@ -208,7 +201,7 @@ int HikCamera::grabFrame(HikCameraFrame& frame, unsigned int timeoutMs)
         frame.hostReceiveTimestampNs = static_cast<std::uint64_t>(
             std::chrono::duration_cast<std::chrono::nanoseconds>(
                 hostReceiveTime.time_since_epoch()).count());
-        if (timestampMode_ == HikTimestampMode::RequireCalibration)
+        if (cameraOptions_.timestampMode == HikTimestampMode::RequireCalibration)
         {
             if (!timestampOriginSet_)
             {

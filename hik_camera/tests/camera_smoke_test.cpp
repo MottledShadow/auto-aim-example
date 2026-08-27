@@ -22,7 +22,6 @@ constexpr std::uint64_t kMinimumSpanNs = 3'000'000'000ULL;
 constexpr auto kTestDeadline = std::chrono::seconds(10);
 constexpr unsigned int kCaptureTimeoutMs = 500;
 constexpr double kMinimumRSquared = 0.999;
-constexpr char kCalibrationPath[] = "config/camera_timestamp.yml";
 
 struct TimestampSample
 {
@@ -83,9 +82,13 @@ TimestampFit fitTimestampScale(const std::vector<TimestampSample>& samples)
     return fit;
 }
 
-bool saveCalibration(const TimestampFit& fit, std::size_t sampleCount, double sampleSpanSeconds)
+bool saveCalibration(
+    const TimestampFit& fit,
+    std::size_t sampleCount,
+    double sampleSpanSeconds,
+    const std::string& outputPath)
 {
-    const std::filesystem::path output(kCalibrationPath);
+    const std::filesystem::path output(outputPath);
     const std::filesystem::path temporary = output.string() + ".tmp";
     try
     {
@@ -216,9 +219,14 @@ int run()
                       << " < " << kMinimumRSquared << "; existing config was kept\n";
             return 0;
         }
-        if (saveCalibration(fit, samples.size(), spanSeconds))
+        if (saveCalibration(
+                fit,
+                samples.size(),
+                spanSeconds,
+                options.timestampCalibrationPath))
         {
-            std::cout << "timestamp calibration saved: " << kCalibrationPath << '\n';
+            std::cout << "timestamp calibration saved: "
+                      << options.timestampCalibrationPath << '\n';
         }
     }
     catch (const std::exception& ex)

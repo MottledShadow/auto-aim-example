@@ -15,11 +15,6 @@
 namespace auto_aim::hik_camera
 {
 
-inline constexpr unsigned int kDefaultHikImageNodeCount = 5;
-inline constexpr unsigned int kDefaultHikFrameTimeoutMs = 1000;
-inline constexpr float kDefaultHikExposureTimeUs = 6000.0F;
-inline constexpr char kDefaultHikTimestampCalibrationPath[] = "config/camera_timestamp.yml";
-
 enum class HikTimestampMode
 {
     RequireCalibration,
@@ -28,10 +23,10 @@ enum class HikTimestampMode
 
 struct HikCameraOptions
 {
-    unsigned int nodeCount = kDefaultHikImageNodeCount;
-    float exposureTimeUs = kDefaultHikExposureTimeUs;
+    unsigned int nodeCount = 5;
+    float exposureTimeUs = 6000.0F;
     HikTimestampMode timestampMode = HikTimestampMode::RequireCalibration;
-    std::string timestampCalibrationPath = kDefaultHikTimestampCalibrationPath;
+    std::string timestampCalibrationPath = "config/camera_timestamp.yml";
 };
 
 struct HikCameraFrame
@@ -48,10 +43,7 @@ class HikCamera
 {
 public:
     // RAII：构造时跑完整条 MV_CC 初始化链并起采集线程，任一步失败即抛 std::runtime_error
-    explicit HikCamera(
-        unsigned int nodeCount = kDefaultHikImageNodeCount,
-        float exposureTimeUs = kDefaultHikExposureTimeUs);
-    explicit HikCamera(const HikCameraOptions& options);
+    explicit HikCamera(HikCameraOptions options = {});
     ~HikCamera();
 
     HikCamera(const HikCamera&) = delete;
@@ -60,7 +52,7 @@ public:
     // 取一帧，逐帧返回 MV 码（MV_OK / 超时 MV_E_NODATA / 采集线程已出错）
     int capture(
         HikCameraFrame& frame,
-        unsigned int timeoutMs = kDefaultHikFrameTimeoutMs);
+        unsigned int timeoutMs = 1000);
 
 private:
     // 停线程 + 逐级回收句柄/设备/SDK，构造失败回滚与析构共用
@@ -80,7 +72,7 @@ private:
     std::uint64_t publishedFrame_ = 0;
     std::uint64_t consumedFrame_ = 0;
     int captureResult_ = MV_OK;
-    HikTimestampMode timestampMode_ = HikTimestampMode::RequireCalibration;
+    HikCameraOptions cameraOptions_;
     double tickToNanoseconds_ = 0.0;
     bool timestampOriginSet_ = false;
     std::uint64_t timestampOriginTick_ = 0;
