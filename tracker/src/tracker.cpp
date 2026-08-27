@@ -16,7 +16,7 @@ std::vector<TrackedArmor> Tracker::track(const detector::DetectionResult& detect
     std::vector<TrackedArmor> tracked = transform_.toWorld(detection.armors, detection.quaternion);
 
     //新一帧进来先算好 dt_(存进估计器)，后面 predict 直接用
-    estimator_.newFrame(detection.timestamp);
+    estimator_.newFrame(detection.timestampNs);
 
     //丢失态：没有模型，等一个有效观测重新起模型后进入确认中
     if (trackerState_ == TrackerState::Lost)

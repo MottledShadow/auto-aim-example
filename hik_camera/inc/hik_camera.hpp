@@ -4,6 +4,8 @@
 #include <condition_variable>
 #include <cstdint>
 #include <mutex>
+#include <optional>
+#include <string>
 #include <thread>
 
 #include <opencv2/core.hpp>
@@ -16,12 +18,29 @@ namespace auto_aim::hik_camera
 inline constexpr unsigned int kDefaultHikImageNodeCount = 5;
 inline constexpr unsigned int kDefaultHikFrameTimeoutMs = 1000;
 inline constexpr float kDefaultHikExposureTimeUs = 6000.0F;
+inline constexpr char kDefaultHikTimestampCalibrationPath[] = "config/camera_timestamp.yml";
+
+enum class HikTimestampMode
+{
+    RequireCalibration,
+    RawOnly,
+};
+
+struct HikCameraOptions
+{
+    unsigned int nodeCount = kDefaultHikImageNodeCount;
+    float exposureTimeUs = kDefaultHikExposureTimeUs;
+    HikTimestampMode timestampMode = HikTimestampMode::RequireCalibration;
+    std::string timestampCalibrationPath = kDefaultHikTimestampCalibrationPath;
+};
 
 struct HikCameraFrame
 {
     cv::Mat image;
     unsigned int frameNumber = 0;
-    std::uint64_t hardwareTimestamp = 0;
+    std::uint64_t hardwareTimestamp = 0;    // 相机原始设备 tick
+    std::uint64_t hostReceiveTimestampNs = 0; // SDK 返回图像缓冲时的 Jetson steady_clock 纳秒
+    std::optional<std::uint64_t> timestampNs; // 用标定比例换算、以本次相机启动为零点的单调纳秒
     int pixelType = 0;
 };
 
@@ -32,6 +51,7 @@ public:
     explicit HikCamera(
         unsigned int nodeCount = kDefaultHikImageNodeCount,
         float exposureTimeUs = kDefaultHikExposureTimeUs);
+    explicit HikCamera(const HikCameraOptions& options);
     ~HikCamera();
 
     HikCamera(const HikCamera&) = delete;
@@ -60,6 +80,10 @@ private:
     std::uint64_t publishedFrame_ = 0;
     std::uint64_t consumedFrame_ = 0;
     int captureResult_ = MV_OK;
+    HikTimestampMode timestampMode_ = HikTimestampMode::RequireCalibration;
+    double tickToNanoseconds_ = 0.0;
+    bool timestampOriginSet_ = false;
+    std::uint64_t timestampOriginTick_ = 0;
 };
 
 } // namespace auto_aim::hik_camera

@@ -12,7 +12,7 @@ class TargetEstimator
 {
 public:
     // 新一帧进来：用两帧时间戳之差算好本帧 dt_，供 predict / update 用；同时记下时间戳
-    void newFrame(std::uint64_t timestamp);
+    void newFrame(std::uint64_t timestampNs);
 
     // 首帧起模型：把整车状态全部重置为默认(速度清零、半径回默认值)，再由观测装甲反推中心
     void init(const ArmorMeasurement& z);
@@ -40,12 +40,11 @@ public:
     double minRadius = 100.0;    // 半径下限, mm
     double maxRadius = 400.0;    // 半径上限, mm
 
-    double tickToSecond = 1.0;   // 设备 tick → 秒 换算系数
-
 private:
     TargetState state_;
     double dt_ = 0.0;                    // 本帧 dt(秒)，由 newFrame 算好，predict/update 用
-    std::uint64_t lastTimestamp_ = 0;    // 上一帧硬件时间戳(tick)，用于算 dt_
+    bool timestampInitialized_ = false;
+    std::uint64_t lastTimestampNs_ = 0;  // 上一帧相机启动后单调纳秒，用于算 dt_
 };
 
 } // namespace auto_aim::tracker

@@ -8,7 +8,7 @@ set -euo pipefail
 #   - SSH 里配好名为 jetson 的主机别名
 #   - 先跑过 tools/cross-handeye-run.sh：标定结果(内参+手眼)会写进共享 ~/auto-aim/config/
 #   - 模型已常驻 Jetson ~/auto-aim/model/{mlp.onnx,label.txt}
-# detector 按相对 cwd 读 config/camera_calibration.yml 与 model/{mlp.onnx,label.txt}。
+# 相机按相对 cwd 读 config/camera_timestamp.yml，detector 读 camera_calibration.yml 与 model/{mlp.onnx,label.txt}。
 # 这些运行时依赖(标定+模型)都常驻 Jetson 共享 config/ 和 model/，本脚本只推二进制，都不推。
 target="jetson"
 project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -29,11 +29,11 @@ ssh "$target" "mkdir -p \"\$HOME/$remote_dir\""
 echo "Deploying binary..."
 scp "$binary" "$target:$remote_dir/full_chain_test"
 
-# 标定与模型都不推：config 靠先跑 tools/cross-handeye-run.sh 生成，model 常驻 Jetson。
+# 标定与模型都不推：时间戳靠 camera-smoke-run.sh，内参靠 cross-handeye-run.sh，model 常驻 Jetson。
 # 缺了 full_chain_test 会读不到内参/模型起不来，先探测提示。
-if ! ssh "$target" "test -f \"\$HOME/$remote_dir/config/camera_calibration.yml\" && test -f \"\$HOME/$remote_dir/model/mlp.onnx\""; then
-    echo "  warning: Jetson ~/$remote_dir 缺 config/camera_calibration.yml 或 model/mlp.onnx"
-    echo "           config 先跑 tools/cross-handeye-run.sh 标定生成；model 需常驻 ~/$remote_dir/model"
+if ! ssh "$target" "test -f \"\$HOME/$remote_dir/config/camera_timestamp.yml\" && test -f \"\$HOME/$remote_dir/config/camera_calibration.yml\" && test -f \"\$HOME/$remote_dir/model/mlp.onnx\""; then
+    echo "  warning: Jetson ~/$remote_dir 缺 camera_timestamp.yml、camera_calibration.yml 或 model/mlp.onnx"
+    echo "           时间戳先跑 hik_camera/tests/camera-smoke-run.sh；内参跑 tools/cross-handeye-run.sh；model 需常驻"
 fi
 
 echo "Running full chain on Jetson (窗口显示在 Jetson 屏幕, ESC 退出)..."

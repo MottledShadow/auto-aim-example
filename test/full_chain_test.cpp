@@ -58,7 +58,11 @@ int run()
         frameSlot.publish(frame.image);
         const auto_aim::serial::Quaternion q = serial.latest();
         input.image = frame.image;
-        input.timestamp = frame.hardwareTimestamp;
+        if (!frame.timestampNs.has_value())
+        {
+            return false;
+        }
+        input.timestampNs = *frame.timestampNs;
         input.quaternion = cv::Vec4d(q.w, q.x, q.y, q.z);
         return true;
     });   // 构造即起后台识别线程

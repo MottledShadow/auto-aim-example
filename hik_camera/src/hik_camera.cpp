@@ -1,12 +1,16 @@
 #include "hik_camera.hpp"
 
 #include <chrono>
+#include <cmath>
 #include <exception>
 #include <iostream>
+#include <limits>
 #include <sstream>
 #include <stdexcept>
 #include <system_error>
 #include <utility>
+
+#include <opencv2/core/persistence.hpp>
 
 namespace auto_aim::hik_camera
 {
@@ -14,6 +18,24 @@ namespace
 {
 
 constexpr unsigned int kCaptureThreadTimeoutMs = 100;
+
+double loadTickToNanoseconds(const std::string& path)
+{
+    cv::FileStorage storage(path, cv::FileStorage::READ);
+    if (!storage.isOpened())
+    {
+        throw std::runtime_error("cannot open camera timestamp calibration: " + path);
+    }
+
+    double value = 0.0;
+    storage["tick_to_nanoseconds"] >> value;
+    if (!std::isfinite(value) || value <= 0.0)
+    {
+        throw std::runtime_error(
+            "camera timestamp calibration must contain a positive finite tick_to_nanoseconds: " + path);
+    }
+    return value;
+}
 
 int convertToBgr(void* handle, const MV_FRAME_OUT& source, cv::Mat& destination)
 {
@@ -56,7 +78,22 @@ int convertToBgr(void* handle, const MV_FRAME_OUT& source, cv::Mat& destination)
 } // namespace
 
 HikCamera::HikCamera(unsigned int nodeCount, float exposureTimeUs)
+    : HikCamera(HikCameraOptions{
+          nodeCount,
+          exposureTimeUs,
+          HikTimestampMode::RequireCalibration,
+          kDefaultHikTimestampCalibrationPath})
 {
+}
+
+HikCamera::HikCamera(const HikCameraOptions& options)
+{
+    timestampMode_ = options.timestampMode;
+    if (timestampMode_ == HikTimestampMode::RequireCalibration)
+    {
+        tickToNanoseconds_ = loadTickToNanoseconds(options.timestampCalibrationPath);
+    }
+
     // 任一步失败：回滚已开的句柄/设备/SDK，再带步骤名+MV 码抛异常
     auto check = [&](int code, const char* step) {
         if (code != MV_OK)
@@ -84,9 +121,9 @@ HikCamera::HikCamera(unsigned int nodeCount, float exposureTimeUs)
     deviceOpened_ = true;
 
     check(MV_CC_SetEnumValue(handle_, "ExposureAuto", 0), "SetEnumValue(ExposureAuto)");
-    check(MV_CC_SetFloatValue(handle_, "ExposureTime", exposureTimeUs), "SetFloatValue(ExposureTime)");
+    check(MV_CC_SetFloatValue(handle_, "ExposureTime", options.exposureTimeUs), "SetFloatValue(ExposureTime)");
     check(MV_CC_SetEnumValue(handle_, "TriggerMode", 0), "SetEnumValue(TriggerMode)");
-    check(MV_CC_SetImageNodeNum(handle_, nodeCount), "MV_CC_SetImageNodeNum");
+    check(MV_CC_SetImageNodeNum(handle_, options.nodeCount), "MV_CC_SetImageNodeNum");
     check(MV_CC_SetGrabStrategy(handle_, MV_GrabStrategy_LatestImagesOnly), "MV_CC_SetGrabStrategy");
 
     check(MV_CC_StartGrabbing(handle_), "MV_CC_StartGrabbing");
@@ -159,6 +196,7 @@ int HikCamera::grabFrame(HikCameraFrame& frame, unsigned int timeoutMs)
         return result;
     }
 
+    const auto hostReceiveTime = std::chrono::steady_clock::now();
     result = convertToBgr(handle_, source, frame.image);
     if (result == MV_OK)
     {
@@ -167,7 +205,34 @@ int HikCamera::grabFrame(HikCameraFrame& frame, unsigned int timeoutMs)
         frame.hardwareTimestamp =
             (static_cast<std::uint64_t>(info.nDevTimeStampHigh) << 32U) |
             static_cast<std::uint64_t>(info.nDevTimeStampLow);
-        frame.pixelType = static_cast<int>(info.enPixelType);
+        frame.hostReceiveTimestampNs = static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(
+                hostReceiveTime.time_since_epoch()).count());
+        if (timestampMode_ == HikTimestampMode::RequireCalibration)
+        {
+            if (!timestampOriginSet_)
+            {
+                timestampOriginTick_ = frame.hardwareTimestamp;
+                timestampOriginSet_ = true;
+            }
+            const std::uint64_t elapsedTicks = frame.hardwareTimestamp - timestampOriginTick_;
+            const double elapsedNs = static_cast<double>(elapsedTicks) * tickToNanoseconds_;
+            if (!std::isfinite(elapsedNs) ||
+                elapsedNs < 0.0 ||
+                elapsedNs > static_cast<double>(std::numeric_limits<long long>::max()))
+            {
+                frame = {};
+                result = MV_E_PARAMETER;
+            }
+            else
+            {
+                frame.timestampNs = static_cast<std::uint64_t>(std::llround(elapsedNs));
+            }
+        }
+        if (result == MV_OK)
+        {
+            frame.pixelType = static_cast<int>(info.enPixelType);
+        }
     }
     else
     {
@@ -251,6 +316,8 @@ void HikCamera::cleanup()
         publishedFrame_ = 0;
         consumedFrame_ = 0;
         captureResult_ = MV_OK;
+        timestampOriginSet_ = false;
+        timestampOriginTick_ = 0;
     }
     stopCapture_ = false;
 }

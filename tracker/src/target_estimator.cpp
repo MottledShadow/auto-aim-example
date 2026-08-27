@@ -1,15 +1,27 @@
 #include "target_estimator.hpp"
 
 #include <cmath>
+#include <stdexcept>
 
 namespace auto_aim::tracker
 {
 
-void TargetEstimator::newFrame(std::uint64_t timestamp)
+void TargetEstimator::newFrame(std::uint64_t timestampNs)
 {
-    //新一帧进来就用两帧时间戳之差算好 dt_，predict / update 直接拿去用
-    dt_ = static_cast<double>(timestamp - lastTimestamp_) * tickToSecond;
-    lastTimestamp_ = timestamp;
+    // 首帧只建时间基准；之后纳秒差固定乘 1e-9 得秒，不再感知相机设备 tick。
+    if (!timestampInitialized_)
+    {
+        timestampInitialized_ = true;
+        lastTimestampNs_ = timestampNs;
+        dt_ = 0.0;
+        return;
+    }
+    if (timestampNs <= lastTimestampNs_)
+    {
+        throw std::runtime_error("tracker timestampNs must advance monotonically");
+    }
+    dt_ = static_cast<double>(timestampNs - lastTimestampNs_) * 1e-9;
+    lastTimestampNs_ = timestampNs;
 }
 
 void TargetEstimator::init(const ArmorMeasurement& z)

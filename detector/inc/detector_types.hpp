@@ -56,7 +56,7 @@ struct Armor
 struct FrameInput
 {
     cv::Mat image;                       // BGR 原图
-    std::uint64_t timestamp = 0;         // 硬件时间戳(设备 tick)，来自 HikCameraFrame::hardwareTimestamp
+    std::uint64_t timestampNs = 0;       // 相机启动后单调纳秒，来自 HikCameraFrame::timestampNs
     cv::Vec4d quaternion{1, 0, 0, 0};    // 取帧时刻 IMU 四元数 (w,x,y,z)，IMU 未接入前为单位四元数
 };
 
@@ -64,7 +64,7 @@ struct FrameInput
 struct DetectionResult
 {
     std::vector<Armor> armors;           // 识别流水线输出，相机系位姿
-    std::uint64_t timestamp = 0;         // 同 FrameInput.timestamp，透传
+    std::uint64_t timestampNs = 0;       // 同 FrameInput.timestampNs，透传
     cv::Vec4d quaternion{1, 0, 0, 0};    // 同 FrameInput.quaternion，透传
 };
 

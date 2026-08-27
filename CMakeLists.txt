@@ -31,7 +31,7 @@ if(NOT MVCAM_LIBRARY)
         "Set MVCAM_ROOT or MVCAM_LIBRARY_DIR when configuring CMake.")
 endif()
 
-# hik_camera 相机模块（静态库）：后台采集线程驱动，MVCAM/OpenCV 经 PUBLIC 传给下游
+# hik_camera 相机模块（静态库）：后台采集线程驱动并输出标定后的单调纳秒，MVCAM/OpenCV 经 PUBLIC 传给下游
 add_subdirectory(hik_camera)
 
 # detector 识别模块（静态库），头文件路径经 PUBLIC 传递给下游 target
