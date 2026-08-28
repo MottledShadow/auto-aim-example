@@ -1,4 +1,5 @@
 #include "lightbar_detector.hpp"
+#include "pnp_solver.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -6,6 +7,8 @@
 #include <vector>
 
 #include <gtest/gtest.h>
+#include <opencv2/calib3d.hpp>
+#include <opencv2/core/persistence.hpp>
 #include <opencv2/imgproc.hpp>
 
 namespace
@@ -17,6 +20,7 @@ using auto_aim::detector::ContourCandidate;
 using auto_aim::detector::LightBar;
 using auto_aim::detector::LightColor;
 using auto_aim::detector::LightbarDetector;
+using auto_aim::detector::PnpSolver;
 using auto_aim::detector::PreprocessResult;
 
 constexpr int kFrameSize = 320;
@@ -423,6 +427,59 @@ TEST(LightbarMatcher, MiddleLightBlocksOnlyTheOuterPair)
     EXPECT_FALSE(std::any_of(armors.begin(), armors.end(), [](const Armor& armor) {
         return connects(armor, 100.0F, 180.0F);
     }));
+}
+
+TEST(PnpSolver, RecoversDepthFromSyntheticProjection)
+{
+    const std::string calibrationPath = "config/camera_calibration.yml";
+    cv::FileStorage storage(calibrationPath, cv::FileStorage::READ);
+    if (!storage.isOpened())
+    {
+        GTEST_SKIP() << "calibration file not found: " << calibrationPath;
+    }
+
+    cv::Mat cameraMatrix;
+    cv::Mat distCoeffs;
+    storage["camera_matrix"] >> cameraMatrix;
+    storage["dist_coeffs"] >> distCoeffs;
+    cameraMatrix.convertTo(cameraMatrix, CV_64F);
+
+    const cv::Vec3d rvec(0.1, -0.05, 0.2);
+    const cv::Vec3d tvec(50.0, -20.0, 2000.0);
+    const std::vector<cv::Point3f> objectPoints = {
+        {-65.0F, -30.0F, 0.0F},
+        {65.0F, -30.0F, 0.0F},
+        {65.0F, 30.0F, 0.0F},
+        {-65.0F, 30.0F, 0.0F},
+    };
+
+    std::vector<cv::Point2f> imagePoints;
+    cv::projectPoints(objectPoints, rvec, tvec, cameraMatrix, distCoeffs, imagePoints);
+
+    Armor armor;
+    armor.leftLight.top = imagePoints[0];
+    armor.rightLight.top = imagePoints[1];
+    armor.rightLight.bottom = imagePoints[2];
+    armor.leftLight.bottom = imagePoints[3];
+    armor.leftLight.center = (armor.leftLight.top + armor.leftLight.bottom) * 0.5F;
+    armor.rightLight.center = (armor.rightLight.top + armor.rightLight.bottom) * 0.5F;
+    armor.center = (armor.leftLight.center + armor.rightLight.center) * 0.5F;
+    armor.type = ArmorType::Small;
+
+    const PnpSolver solver;
+    const std::vector<Armor> solved = solver.solve({armor});
+
+    ASSERT_EQ(solved.size(), 1U);
+    ASSERT_FALSE(solved[0].rvec.empty());
+    ASSERT_FALSE(solved[0].tvec.empty());
+    EXPECT_EQ(solved[0].tvec.type(), CV_64F);
+    EXPECT_NEAR(solved[0].tvec.at<double>(2, 0), 2000.0, 100.0);
+
+    const double cx = cameraMatrix.at<double>(0, 2);
+    const double cy = cameraMatrix.at<double>(1, 2);
+    const float expectedDistance =
+        static_cast<float>(std::hypot(armor.center.x - cx, armor.center.y - cy));
+    EXPECT_NEAR(solved[0].distanceToPrincipalPoint, expectedDistance, 0.5F);
 }
 
 } // namespace
