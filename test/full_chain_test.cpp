@@ -1,7 +1,11 @@
 #include <cfloat>
+#include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <cstdio>
+#include <cstdint>
 #include <iostream>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -17,6 +21,62 @@
 
 namespace
 {
+
+struct TimeComparison
+{
+    bool available = false;
+    bool ratioAvailable = false;
+    double cameraElapsedMs = 0.0;
+    double jetsonElapsedMs = 0.0;
+    double ratio = 0.0;
+};
+
+// 第一帧同时记录相机相对时间戳与 Jetson steady_clock，后续把两个相对时间放到同一起点比较。
+class TimestampOrigin
+{
+public:
+    using Clock = std::chrono::steady_clock;
+
+    void initialize(std::uint64_t cameraTimestampNs)
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!initialized_)
+        {
+            baseCameraTimestampNs_ = cameraTimestampNs;
+            baseJetsonTime_ = Clock::now();
+            initialized_ = true;
+        }
+    }
+
+    TimeComparison compare(std::uint64_t cameraTimestampNs)
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!initialized_ || cameraTimestampNs < baseCameraTimestampNs_)
+        {
+            return {};
+        }
+
+        const Clock::time_point now = Clock::now();
+        TimeComparison result;
+        result.available = true;
+        result.cameraElapsedMs =
+            static_cast<double>(cameraTimestampNs - baseCameraTimestampNs_) * 1e-6;
+        result.jetsonElapsedMs =
+            std::chrono::duration<double, std::milli>(now - baseJetsonTime_).count();
+        if (result.cameraElapsedMs > 0.0)
+        {
+            result.ratioAvailable = true;
+            result.ratio = result.jetsonElapsedMs / result.cameraElapsedMs;
+        }
+        return result;
+    }
+
+private:
+    std::mutex mutex_;
+    bool initialized_ = false;
+    std::uint64_t baseCameraTimestampNs_ = 0;
+    Clock::time_point baseJetsonTime_;
+};
 
 // 按 PnP 点序 left.top → right.top → right.bottom → left.bottom 连四条边画装甲框
 void drawArmorQuad(cv::Mat& vis, const auto_aim::detector::Armor& armor, const cv::Scalar& color, int thickness)
@@ -47,6 +107,7 @@ int run()
 
     // 2. 共享图槽：识别线程取帧时把这帧图存进来，主线程画图时取最新
     auto_aim::LatestSlot<cv::Mat> frameSlot;
+    TimestampOrigin timestampOrigin;
 
     // 3. 帧源回调：相机取帧 → 存图 → 填 FrameInput(图 + 硬件时间戳 + 当下四元数)，喂给识别线程
     auto_aim::detector::Detector detector([&](auto_aim::detector::FrameInput& input) {
@@ -62,6 +123,7 @@ int run()
         {
             return false;
         }
+        timestampOrigin.initialize(*frame.timestampNs);
         input.timestampNs = *frame.timestampNs;
         input.quaternion = cv::Vec4d(q.w, q.x, q.y, q.z);
         return true;
@@ -78,6 +140,7 @@ int run()
     {
         // 5.0 取识别线程发布的最新结果 + 与之同源的最新图（相差至多一帧，冒烟测试足够）
         auto_aim::detector::DetectionResult det = detector.latest();
+        const TimeComparison timeComparison = timestampOrigin.compare(det.timestampNs);
         cv::Mat display = frameSlot.latest();
         if (display.empty())
         {
@@ -147,6 +210,49 @@ int run()
                       det.quaternion[0], det.quaternion[1], det.quaternion[2], det.quaternion[3]);
         cv::putText(display, quatText, cv::Point(10, 60),
                     cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(255, 255, 0), 2);
+
+        // 相机时间戳和 Jetson steady_clock 从第一帧起对齐，并比较两者的相对时间比例。
+        const bool timeValid = timeComparison.available &&
+            std::isfinite(timeComparison.cameraElapsedMs) &&
+            std::isfinite(timeComparison.jetsonElapsedMs) &&
+            (!timeComparison.ratioAvailable || std::isfinite(timeComparison.ratio));
+        const cv::Scalar timestampColor = timeValid
+            ? cv::Scalar(255, 255, 0)
+            : cv::Scalar(0, 0, 255);
+        if (timeComparison.available)
+        {
+            char elapsedText[160];
+            std::snprintf(
+                elapsedText,
+                sizeof(elapsedText),
+                "camera=%.3fms jetson=%.3fms",
+                timeComparison.cameraElapsedMs,
+                timeComparison.jetsonElapsedMs);
+            cv::putText(display, elapsedText, cv::Point(10, 90),
+                        cv::FONT_HERSHEY_SIMPLEX, 0.6, timestampColor, 2);
+
+            if (timeComparison.ratioAvailable)
+            {
+                char ratioText[96];
+                std::snprintf(
+                    ratioText,
+                    sizeof(ratioText),
+                    "jetson/camera ratio=%.6f",
+                    timeComparison.ratio);
+                cv::putText(display, ratioText, cv::Point(10, 120),
+                            cv::FONT_HERSHEY_SIMPLEX, 0.6, timestampColor, 2);
+            }
+            else
+            {
+                cv::putText(display, "jetson/camera ratio=waiting", cv::Point(10, 120),
+                            cv::FONT_HERSHEY_SIMPLEX, 0.6, timestampColor, 2);
+            }
+        }
+        else
+        {
+            cv::putText(display, "time comparison=waiting", cv::Point(10, 90),
+                        cv::FONT_HERSHEY_SIMPLEX, 0.6, timestampColor, 2);
+        }
 
         cv::imshow("full_chain", display);
         if (cv::waitKey(1) == 27)   // ESC
