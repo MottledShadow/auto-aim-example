@@ -11,21 +11,21 @@ set -euo pipefail
 target="jetson"
 project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 build_dir="$project_dir/build/cross"
-binary="$build_dir/serial_recv_test"
+binary="$build_dir/serial_io_smoke_test"
 remote_dir="auto-aim"
 
 echo "Configuring ARM64 build..."
 cmake -S "$project_dir" -B "$build_dir" \
     -DCMAKE_TOOLCHAIN_FILE="$project_dir/jetson-toolchain.cmake"
 
-echo "Building serial_recv_test..."
-cmake --build "$build_dir" --target serial_recv_test --parallel
+echo "Building serial_io_smoke_test..."
+cmake --build "$build_dir" --target serial_io_smoke_test --parallel
 
 echo "Preparing Jetson directory..."
 ssh "$target" "mkdir -p \"\$HOME/$remote_dir\""
 
 echo "Deploying binary..."
-scp "$binary" "$target:$remote_dir/serial_recv_test"
+scp "$binary" "$target:$remote_dir/serial_io_smoke_test"
 
 echo "Running serial smoke test on Jetson (Ctrl-C 退出)..."
 echo "  收: 每 100ms 一行 recv w= x= y= z=，数值随云台姿态变、模长≈1"
@@ -34,6 +34,6 @@ echo "  异常: 一直 recv w=1 x=0 y=0 z=0 不动 → 查接线 / 波特率 / �
 ssh -t "$target" "
 set -e
 cd \"\$HOME/$remote_dir\"
-chmod u+x serial_recv_test
-./serial_recv_test
+chmod u+x serial_io_smoke_test
+./serial_io_smoke_test
 "
