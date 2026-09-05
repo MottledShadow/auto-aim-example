@@ -124,25 +124,30 @@ void HikCamera::cleanup()
 {
     stopCapture_ = true;
     frameReady_.notify_all();
+    //销毁线程
     if (captureThread_.joinable())
     {
         captureThread_.join();
     }
+    //停止取流
     if (grabbing_)
     {
         MV_CC_StopGrabbing(handle_);
         grabbing_ = false;
     }
+    //关闭设备
     if (deviceOpened_)
     {
         MV_CC_CloseDevice(handle_);
         deviceOpened_ = false;
     }
+    //销毁句柄
     if (handle_ != nullptr)
     {
         MV_CC_DestroyHandle(handle_);
         handle_ = nullptr;
     }
+    //释放SDK资源
     if (sdkInitialized_)
     {
         MV_CC_Finalize();

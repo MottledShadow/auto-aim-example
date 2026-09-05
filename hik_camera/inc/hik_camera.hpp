@@ -15,16 +15,16 @@ namespace auto_aim::hik_camera
 
 struct HikCameraOptions
 {
-    unsigned int nodeCount = 5;
-    float exposureTimeUs = 6000.0F;
-    unsigned int captureThreadTimeoutMs = 100;
+    unsigned int nodeCount = 5;                 //SDK内部缓存节点个数
+    float exposureTimeUs = 6000.0F;             //曝光时间
+    unsigned int captureThreadTimeoutMs = 100;  //等待超时时间
 };
 
 struct HikCameraFrame
 {
-    cv::Mat image;
-    unsigned int frameNumber = 0;
-    std::uint64_t timestampNs = 0;
+    cv::Mat image;                  //图像
+    unsigned int frameNumber = 0;   //帧数
+    std::uint64_t timestampNs = 0;  //已经转换的时间戳
 };
 
 class HikCamera
@@ -45,6 +45,7 @@ private:
     int grabFrame();
     void captureLoop();
 
+    HikCameraOptions cameraOptions_;
     void* handle_ = nullptr;
     bool sdkInitialized_ = false;
     bool deviceOpened_ = false;
@@ -58,7 +59,6 @@ private:
     std::uint64_t publishedFrame_ = 0;
     std::uint64_t consumedFrame_ = 0;
     int captureResult_ = MV_OK;
-    HikCameraOptions cameraOptions_;
     double tickToNanoseconds_ = 10.0;
 };
 
