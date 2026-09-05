@@ -192,46 +192,47 @@ int HikCamera::capture(HikCameraFrame& frame, unsigned int timeoutMs)
     return captureResult_ != MV_OK ? captureResult_ : MV_E_CALLORDER;
 }
 
-int HikCamera::grabFrame(HikCameraFrame& frame)
+int HikCamera::grabFrame()
 {
     //通过内部缓存获取图像
     MV_FRAME_OUT source{};
     int result = MV_CC_GetImageBuffer(handle_, &source, cameraOptions_.captureThreadTimeoutMs);
     if (result != MV_OK)
     {
-        frame = {};
+        readyFrame_ = {};
         return result;
     }
 
-    result = convertToBgr(handle_, source, frame.image);
+    //图像处理，存info
+    result = convertToBgr(handle_, source, readyFrame_.image);
     if (result == MV_OK)
     {
         const MV_FRAME_OUT_INFO_EX& info = source.stFrameInfo;
-        frame.frameNumber = info.nFrameNum;
-        frame.hardwareTimestamp =
+        readyFrame_.frameNumber = info.nFrameNum;
+        const std::uint64_t hardwareTimestamp =
             (static_cast<std::uint64_t>(info.nDevTimeStampHigh) << 32U) |
             static_cast<std::uint64_t>(info.nDevTimeStampLow);
-        const double elapsedNs = static_cast<double>(frame.hardwareTimestamp) * tickToNanoseconds_;
-        frame.timestampNs = static_cast<std::uint64_t>(std::llround(elapsedNs));
+        readyFrame_.timestampNs = static_cast<std::uint64_t>(
+            std::llround(static_cast<double>(hardwareTimestamp) * tickToNanoseconds_));
     }
     else
     {
-        frame = {};
+        readyFrame_ = {};
     }
 
+    //释放图像缓存
     const int freeResult = MV_CC_FreeImageBuffer(handle_, &source);
     return result != MV_OK ? result : freeResult;
 }
 
 void HikCamera::captureLoop()
 {
-    HikCameraFrame frame;
     while (!stopCapture_)
     {
         int result = MV_OK;
         try
         {
-            result = grabFrame(frame);
+            result = grabFrame();
         }
         catch (const std::exception&)
         {
@@ -253,7 +254,7 @@ void HikCamera::captureLoop()
 
         {
             std::lock_guard<std::mutex> lock(frameMutex_);
-            std::swap(latestFrame_, frame);
+            std::swap(latestFrame_, readyFrame_);
             ++publishedFrame_;
         }
         frameReady_.notify_one();

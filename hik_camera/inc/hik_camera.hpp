@@ -4,7 +4,6 @@
 #include <condition_variable>
 #include <cstdint>
 #include <mutex>
-#include <optional>
 #include <thread>
 
 #include <opencv2/core.hpp>
@@ -25,8 +24,7 @@ struct HikCameraFrame
 {
     cv::Mat image;
     unsigned int frameNumber = 0;
-    std::uint64_t hardwareTimestamp = 0;        //相机时间戳
-    std::optional<std::uint64_t> timestampNs;   //标定后的时间戳
+    std::uint64_t timestampNs = 0;
 };
 
 class HikCamera
@@ -44,7 +42,7 @@ public:
 
 private:
     void cleanup();
-    int grabFrame(HikCameraFrame& frame);
+    int grabFrame();
     void captureLoop();
 
     void* handle_ = nullptr;
@@ -55,6 +53,7 @@ private:
     std::atomic_bool stopCapture_{false};
     std::mutex frameMutex_;
     std::condition_variable frameReady_;
+    HikCameraFrame readyFrame_;
     HikCameraFrame latestFrame_;
     std::uint64_t publishedFrame_ = 0;
     std::uint64_t consumedFrame_ = 0;
