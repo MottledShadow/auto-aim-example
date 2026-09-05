@@ -36,7 +36,6 @@ struct HikCameraFrame
     std::uint64_t hardwareTimestamp = 0;
     std::uint64_t hostReceiveTimestampNs = 0;
     std::optional<std::uint64_t> timestampNs;
-    int pixelType = 0;
 };
 
 class HikCamera

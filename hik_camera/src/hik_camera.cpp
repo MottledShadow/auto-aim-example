@@ -220,10 +220,6 @@ int HikCamera::grabFrame(HikCameraFrame& frame, unsigned int timeoutMs)
                 frame.timestampNs = static_cast<std::uint64_t>(std::llround(elapsedNs));
             }
         }
-        if (result == MV_OK)
-        {
-            frame.pixelType = static_cast<int>(info.enPixelType);
-        }
     }
     else
     {
