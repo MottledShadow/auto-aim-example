@@ -52,7 +52,6 @@ public:
 
     struct ErrorParameters
     {
-        // P 初始对角线：估计误差方差，与 Q/R 独立；默认 1 暂作占位。
         double pXc = 1.0;         // mm²
         double pVxc = 1.0;        // (mm/s)²
         double pYc = 1.0;         // mm²
@@ -68,45 +67,36 @@ public:
 
     void newFrame(std::uint64_t timestampNs);
 
-    // 重置速度/半径，由观测装甲反推中心，并按 error.pXXX 重置 P；保留时间基准。
-    // P 初始方差须有限且 > 0，否则抛出 invalid_argument，不修改状态、观测和 P。
     void init(const ArmorMeasurement& z);
 
-    // 用本帧 dt_ 更新 A，计算 x先验=A*x后验、P先验=A*P后验*Aᵀ+Q；不覆盖后验。
+    // 用本帧 dt_ 更新 A，计算 x_prior=A*x_post、P_prior=A*P_post*Aᵀ+Q；不覆盖后验。
     void predict();
 
-    // 观测更新：把观测装甲反投影成中心/半径观测，算残差后低通修正 state_，半径 clamp 到区间
+    // EKF 更新：在 x_prior 处计算 H/K，用观测残差更新 x_post/P_post。
+    // 每次观测更新前先 predict；失败抛出异常，不覆盖后验或已保存观测。
     void update(const ArmorMeasurement& z);
 
     // 越过滤波直写 yaw/z(单板特例重锚)：不动中心/速度/半径
     void reanchorYawZ(double yaw, double z);
 
-    const StateVector& state() const { return state_; }
+    const StateVector& state() const { return x_post; }
 
-    // 观测函数 h(x)：由当前状态推出装甲板应在的世界位姿，给 Tracker 做匹配/门用
+    // 观测函数 h(x)：由先验状态推出装甲板应在的世界位姿，给 Tracker 做匹配/门用
     ArmorMeasurement predictedArmor() const;
 
-    //观测更新的低通增益：posGain 越大越信观测(越灵敏越抖)，velGain 决定残差折进速度的比例
-    double posGain = 0.5;        // 位置/角度一阶低通增益 (alpha)
-    double velGain = 0.1;        // 速度低通增益 (beta)
-    double radiusGain = 0.05;    // 半径低通增益：半径变化慢，取比 posGain 小，避免与中心估计耦合抖动
-
-    //半径估计范围：观测更新时把半径 clamp 到此区间
-    double minRadius = 100.0;    // 半径下限, mm
-    double maxRadius = 400.0;    // 半径上限, mm
-
 private:
-    StateVector state_ = StateVector::Zero(); // 状态后验
-    StateCovarianceMatrix P = StateCovarianceMatrix::Identity(); // 协方差后验，init 前为占位值
-    StateVector statePrior_ = StateVector::Zero(); // 状态先验
-    StateCovarianceMatrix PPrior_ = StateCovarianceMatrix::Identity(); // 协方差先验
+    StateVector x_post = StateVector::Zero(); // 状态后验
+    StateCovarianceMatrix P_post = StateCovarianceMatrix::Identity(); // 协方差后验，init 前为占位值
+    StateVector x_prior = StateVector::Zero(); // 状态先验
+    StateCovarianceMatrix P_prior = StateCovarianceMatrix::Identity(); // 协方差先验
     MeasurementVector z_ = MeasurementVector::Zero(); // 最近一次实际观测：xa,ya,za,yaw
     TransitionMatrix A;
     MeasurementJacobian H = MeasurementJacobian::Zero();
     NoiseParameters noise; // 构造时填写 Q/R；参数不自动刷新矩阵。
-    ErrorParameters error; // 每次 init 时用于重置 P。
+    ErrorParameters error; // 每次 init 时用于重置 P_post。
     ProcessNoiseMatrix Q = ProcessNoiseMatrix::Zero();
     MeasurementNoiseMatrix R = MeasurementNoiseMatrix::Zero();
+    void updateA(); // 按当前 dt_ 完整填写 A
     MeasurementVector h(const StateVector& x) const;
     double dt_ = 0.0;                    // 本帧 dt(秒)，由 newFrame 算好，predict/update 用
     bool timestampInitialized_ = false;
