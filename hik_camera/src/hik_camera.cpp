@@ -75,7 +75,7 @@ int convertToBgr(void* handle, const MV_FRAME_OUT& source, cv::Mat& destination)
     return MV_CC_ConvertPixelTypeEx(handle, &parameters);
 }
 
-} // namespace
+}
 
 HikCamera::HikCamera(HikCameraOptions options)
     : cameraOptions_(std::move(options))
@@ -85,7 +85,6 @@ HikCamera::HikCamera(HikCameraOptions options)
         tickToNanoseconds_ = loadTickToNanoseconds(cameraOptions_.timestampCalibrationPath);
     }
 
-    // 任一步失败：回滚已开的句柄/设备/SDK，再带步骤名+MV 码抛异常
     auto check = [&](int code, const char* step) {
         if (code != MV_OK)
         {
@@ -122,7 +121,6 @@ HikCamera::HikCamera(HikCameraOptions options)
     check(MV_CC_StartGrabbing(handle_), "MV_CC_StartGrabbing");
     grabbing_ = true;
 
-    // 起采集线程
     stopCapture_ = false;
     {
         std::lock_guard<std::mutex> lock(frameMutex_);
@@ -275,7 +273,6 @@ void HikCamera::captureLoop()
 
 void HikCamera::cleanup()
 {
-    // 先停采集线程，再逐级回收；每步都判标志位，只回滚已完成的步骤
     stopCapture_ = true;
     frameReady_.notify_all();
     if (captureThread_.joinable())
@@ -315,4 +312,4 @@ void HikCamera::cleanup()
     stopCapture_ = false;
 }
 
-} // namespace auto_aim::hik_camera
+}

@@ -33,29 +33,26 @@ struct HikCameraFrame
 {
     cv::Mat image;
     unsigned int frameNumber = 0;
-    std::uint64_t hardwareTimestamp = 0;    // 相机原始设备 tick
-    std::uint64_t hostReceiveTimestampNs = 0; // SDK 返回图像缓冲时的 Jetson steady_clock 纳秒
-    std::optional<std::uint64_t> timestampNs; // 用标定比例换算、以本次相机启动为零点的单调纳秒
+    std::uint64_t hardwareTimestamp = 0;
+    std::uint64_t hostReceiveTimestampNs = 0;
+    std::optional<std::uint64_t> timestampNs;
     int pixelType = 0;
 };
 
 class HikCamera
 {
 public:
-    // RAII：构造时跑完整条 MV_CC 初始化链并起采集线程，任一步失败即抛 std::runtime_error
     explicit HikCamera(HikCameraOptions options = {});
     ~HikCamera();
 
     HikCamera(const HikCamera&) = delete;
     HikCamera& operator=(const HikCamera&) = delete;
 
-    // 取一帧，逐帧返回 MV 码（MV_OK / 超时 MV_E_NODATA / 采集线程已出错）
     int capture(
         HikCameraFrame& frame,
         unsigned int timeoutMs = 1000);
 
 private:
-    // 停线程 + 逐级回收句柄/设备/SDK，构造失败回滚与析构共用
     void cleanup();
     int grabFrame(HikCameraFrame& frame, unsigned int timeoutMs);
     void captureLoop();
@@ -78,4 +75,4 @@ private:
     std::uint64_t timestampOriginTick_ = 0;
 };
 
-} // namespace auto_aim::hik_camera
+}

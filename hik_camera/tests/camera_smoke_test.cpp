@@ -237,7 +237,7 @@ int run()
     return 0;
 }
 
-} // namespace
+}
 
 int main()
 try
