@@ -8,7 +8,6 @@ namespace auto_aim::detector
 
 namespace
 {
-// PnP 输入选择：0 = 未分类的配对装甲，1 = 数字分类过滤后的装甲
 constexpr int kPnPInputMode = 0;
 }
 
@@ -18,7 +17,6 @@ Detector::Detector(FrameSource source)
     , pnpSolver_(PnpSolverParams{})
     , source_(std::move(source))
 {
-    //模型/标定任一加载失败即 fail-fast，别让线程空转出不了结果
     if (!error().empty())
     {
         throw std::runtime_error("Detector init failed: " + error());
