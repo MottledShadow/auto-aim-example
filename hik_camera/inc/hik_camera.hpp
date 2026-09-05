@@ -25,6 +25,7 @@ struct HikCameraOptions
 {
     unsigned int nodeCount = 5;
     float exposureTimeUs = 6000.0F;
+    unsigned int captureThreadTimeoutMs = 100;
     HikTimestampMode timestampMode = HikTimestampMode::RequireCalibration;
     std::string timestampCalibrationPath = "config/camera_timestamp.yml";
 };
@@ -33,9 +34,9 @@ struct HikCameraFrame
 {
     cv::Mat image;
     unsigned int frameNumber = 0;
-    std::uint64_t hardwareTimestamp = 0;
-    std::uint64_t hostReceiveTimestampNs = 0;
-    std::optional<std::uint64_t> timestampNs;
+    std::uint64_t hardwareTimestamp = 0;        //相机时间戳
+    std::uint64_t hostReceiveTimestampNs = 0;   //Jetson时间戳
+    std::optional<std::uint64_t> timestampNs;   //标定后的时间戳
 };
 
 class HikCamera
@@ -69,7 +70,7 @@ private:
     std::uint64_t consumedFrame_ = 0;
     int captureResult_ = MV_OK;
     HikCameraOptions cameraOptions_;
-    double tickToNanoseconds_ = 0.0;
+    double tickToNanoseconds_ = 10.0;
     bool timestampOriginSet_ = false;
     std::uint64_t timestampOriginTick_ = 0;
 };

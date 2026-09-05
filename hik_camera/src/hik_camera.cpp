@@ -17,8 +17,6 @@ namespace auto_aim::hik_camera
 namespace
 {
 
-constexpr unsigned int kCaptureThreadTimeoutMs = 100;
-
 double loadTickToNanoseconds(const std::string& path)
 {
     cv::FileStorage storage(path, cv::FileStorage::READ);
@@ -80,11 +78,6 @@ int convertToBgr(void* handle, const MV_FRAME_OUT& source, cv::Mat& destination)
 HikCamera::HikCamera(HikCameraOptions options)
     : cameraOptions_(std::move(options))
 {
-    if (cameraOptions_.timestampMode == HikTimestampMode::RequireCalibration)
-    {
-        tickToNanoseconds_ = loadTickToNanoseconds(cameraOptions_.timestampCalibrationPath);
-    }
-
     auto check = [&](int code, const char* step) {
         if (code != MV_OK)
         {
@@ -238,7 +231,7 @@ void HikCamera::captureLoop()
         int result = MV_OK;
         try
         {
-            result = grabFrame(frame, kCaptureThreadTimeoutMs);
+            result = grabFrame(frame, cameraOptions_.captureThreadTimeoutMs);
         }
         catch (const std::exception&)
         {
