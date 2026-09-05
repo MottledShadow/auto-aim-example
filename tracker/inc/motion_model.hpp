@@ -72,7 +72,7 @@ public:
     // P 初始方差须有限且 > 0，否则抛出 invalid_argument，不修改状态、观测和 P。
     void init(const ArmorMeasurement& z);
 
-    // 匀速模型预测：位置/高度/角度按 当前值 + 速度 × dt_ 推进；dt_ 由 newFrame 算好
+    // 用本帧 dt_ 更新 A，计算 x先验=A*x后验、P先验=A*P后验*Aᵀ+Q；不覆盖后验。
     void predict();
 
     // 观测更新：把观测装甲反投影成中心/半径观测，算残差后低通修正 state_，半径 clamp 到区间
@@ -96,8 +96,10 @@ public:
     double maxRadius = 400.0;    // 半径上限, mm
 
 private:
-    StateVector state_ = StateVector::Zero();
-    StateCovarianceMatrix P = StateCovarianceMatrix::Identity(); // init 前的占位值
+    StateVector state_ = StateVector::Zero(); // 状态后验
+    StateCovarianceMatrix P = StateCovarianceMatrix::Identity(); // 协方差后验，init 前为占位值
+    StateVector statePrior_ = StateVector::Zero(); // 状态先验
+    StateCovarianceMatrix PPrior_ = StateCovarianceMatrix::Identity(); // 协方差先验
     MeasurementVector z_ = MeasurementVector::Zero(); // 最近一次实际观测：xa,ya,za,yaw
     TransitionMatrix A;
     MeasurementJacobian H = MeasurementJacobian::Zero();

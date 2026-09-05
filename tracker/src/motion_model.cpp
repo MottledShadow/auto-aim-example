@@ -125,15 +125,27 @@ void TargetEstimator::init(const ArmorMeasurement& z)
          0,         0,          0,         0,          0,         0,          error.pYaw, 0,           0,
          0,         0,          0,         0,          0,         0,          0,          error.pVyaw, 0,
          0,         0,          0,         0,          0,         0,          0,          0,           error.pRadius;
+
+    // 重建模型时同步先验，清除上一次跟踪的预测结果。
+    statePrior_ = state_;
+    PPrior_ = P;
 }
 
 void TargetEstimator::predict()
 {
-    //按 newFrame 算好的 dt_ 匀速推进；自己不再算 dt
-    state_(Xc)  += state_(Vxc)  * dt_;
-    state_(Yc)  += state_(Vyc)  * dt_;
-    state_(Za)   += state_(Vza)   * dt_;
-    state_(Yaw) += state_(Vyaw) * dt_;
+    // 每次使用 newFrame 算好的 dt_ 重新填写运动矩阵。
+    A << 1, dt_, 0, 0,   0, 0,   0, 0,   0,
+         0, 1,   0, 0,   0, 0,   0, 0,   0,
+         0, 0,   1, dt_, 0, 0,   0, 0,   0,
+         0, 0,   0, 1,   0, 0,   0, 0,   0,
+         0, 0,   0, 0,   1, dt_, 0, 0,   0,
+         0, 0,   0, 0,   0, 1,   0, 0,   0,
+         0, 0,   0, 0,   0, 0,   1, dt_, 0,
+         0, 0,   0, 0,   0, 0,   0, 1,   0,
+         0, 0,   0, 0,   0, 0,   0, 0,   1;
+
+    statePrior_ = A * state_;
+    PPrior_ = A * P * A.transpose() + Q;
 }
 
 ArmorMeasurement TargetEstimator::predictedArmor() const
