@@ -300,9 +300,7 @@ bool solveAndSaveHandEye(
 int run()
 {
     // 构造即初始化，失败抛异常：相机 + 串口(IMU 四元数)
-    auto_aim::hik_camera::HikCameraOptions cameraOptions;
-    cameraOptions.timestampMode = auto_aim::hik_camera::HikTimestampMode::RawOnly;
-    auto_aim::hik_camera::HikCamera camera(cameraOptions);
+    auto_aim::hik_camera::HikCamera camera;
     auto_aim::serial::Serial serial;
 
     // 预览用全分辨率显示，窗口可缩放且保持宽高比；给个 1080p 屏上留边的初始尺寸

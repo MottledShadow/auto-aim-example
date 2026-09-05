@@ -5,7 +5,6 @@
 #include <cstdint>
 #include <mutex>
 #include <optional>
-#include <string>
 #include <thread>
 
 #include <opencv2/core.hpp>
@@ -15,19 +14,11 @@
 namespace auto_aim::hik_camera
 {
 
-enum class HikTimestampMode
-{
-    RequireCalibration,
-    RawOnly,
-};
-
 struct HikCameraOptions
 {
     unsigned int nodeCount = 5;
     float exposureTimeUs = 6000.0F;
     unsigned int captureThreadTimeoutMs = 100;
-    HikTimestampMode timestampMode = HikTimestampMode::RequireCalibration;
-    std::string timestampCalibrationPath = "config/camera_timestamp.yml";
 };
 
 struct HikCameraFrame

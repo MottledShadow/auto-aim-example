@@ -10,30 +10,10 @@
 #include <system_error>
 #include <utility>
 
-#include <opencv2/core/persistence.hpp>
-
 namespace auto_aim::hik_camera
 {
 namespace
 {
-
-double loadTickToNanoseconds(const std::string& path)
-{
-    cv::FileStorage storage(path, cv::FileStorage::READ);
-    if (!storage.isOpened())
-    {
-        throw std::runtime_error("cannot open camera timestamp calibration: " + path);
-    }
-
-    double value = 0.0;
-    storage["tick_to_nanoseconds"] >> value;
-    if (!std::isfinite(value) || value <= 0.0)
-    {
-        throw std::runtime_error(
-            "camera timestamp calibration must contain a positive finite tick_to_nanoseconds: " + path);
-    }
-    return value;
-}
 
 int convertToBgr(void* handle, const MV_FRAME_OUT& source, cv::Mat& destination)
 {
@@ -192,26 +172,23 @@ int HikCamera::grabFrame(HikCameraFrame& frame, unsigned int timeoutMs)
         frame.hostReceiveTimestampNs = static_cast<std::uint64_t>(
             std::chrono::duration_cast<std::chrono::nanoseconds>(
                 hostReceiveTime.time_since_epoch()).count());
-        if (cameraOptions_.timestampMode == HikTimestampMode::RequireCalibration)
+        if (!timestampOriginSet_)
         {
-            if (!timestampOriginSet_)
-            {
-                timestampOriginTick_ = frame.hardwareTimestamp;
-                timestampOriginSet_ = true;
-            }
-            const std::uint64_t elapsedTicks = frame.hardwareTimestamp - timestampOriginTick_;
-            const double elapsedNs = static_cast<double>(elapsedTicks) * tickToNanoseconds_;
-            if (!std::isfinite(elapsedNs) ||
-                elapsedNs < 0.0 ||
-                elapsedNs > static_cast<double>(std::numeric_limits<long long>::max()))
-            {
-                frame = {};
-                result = MV_E_PARAMETER;
-            }
-            else
-            {
-                frame.timestampNs = static_cast<std::uint64_t>(std::llround(elapsedNs));
-            }
+            timestampOriginTick_ = frame.hardwareTimestamp;
+            timestampOriginSet_ = true;
+        }
+        const std::uint64_t elapsedTicks = frame.hardwareTimestamp - timestampOriginTick_;
+        const double elapsedNs = static_cast<double>(elapsedTicks) * tickToNanoseconds_;
+        if (!std::isfinite(elapsedNs) ||
+            elapsedNs < 0.0 ||
+            elapsedNs > static_cast<double>(std::numeric_limits<long long>::max()))
+        {
+            frame = {};
+            result = MV_E_PARAMETER;
+        }
+        else
+        {
+            frame.timestampNs = static_cast<std::uint64_t>(std::llround(elapsedNs));
         }
     }
     else

@@ -18,15 +18,3 @@ target_link_libraries(hik_camera
 )
 
 target_compile_options(hik_camera PRIVATE -Wall -Wextra -Wpedantic)
-
-# 连真实海康相机的无界面冒烟测试 + 设备 tick→纳秒标定（跑法见 tests/camera-smoke-run.sh）
-add_executable(hik_camera_smoke_test
-    tests/camera_smoke_test.cpp
-)
-
-target_link_libraries(hik_camera_smoke_test PRIVATE hik_camera)
-
-target_compile_options(hik_camera_smoke_test PRIVATE -Wall -Wextra -Wpedantic)
-
-set_target_properties(hik_camera_smoke_test PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}")
