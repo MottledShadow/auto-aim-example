@@ -18,6 +18,7 @@
 #include "hik_camera.hpp"
 #include "latest_slot.hpp"
 #include "serial.hpp"
+#include "target_estimator.hpp"
 
 namespace
 {
@@ -108,6 +109,10 @@ int run()
     // 2. 共享图槽：识别线程取帧时把这帧图存进来，主线程画图时取最新
     auto_aim::LatestSlot<cv::Mat> frameSlot;
     TimestampOrigin timestampOrigin;
+    auto_aim::tracker::TargetEstimator estimator;
+    bool estimatorInitialized = false;
+    bool estimatorTimestampInitialized = false;
+    std::uint64_t lastEstimatorTimestampNs = 0;
 
     // 3. 帧源回调：相机取帧 → 存图 → 填 FrameInput(图 + 硬件时间戳 + 当下四元数)，喂给识别线程
     auto_aim::detector::Detector detector([&](auto_aim::detector::FrameInput& input) {
@@ -160,6 +165,46 @@ int run()
             {
                 bestDist = det.armors[i].distanceToPrincipalPoint;
                 best = static_cast<int>(i);
+            }
+        }
+
+        // 把当前选中装甲板整理为估计器观测。估计器只消费新检测时间戳，避免 latest() 重复值被重复更新。
+        auto_aim::tracker::ArmorMeasurement observation;
+        const bool observationAvailable = best >= 0;
+        if (observationAvailable)
+        {
+            const auto_aim::tracker::TrackedArmor& armor = world[best];
+            observation = {
+                armor.position[0],
+                armor.position[1],
+                armor.position[2],
+                auto_aim::tracker::CoordinateTransform::orientationToYaw(armor.orientation),
+            };
+        }
+
+        const bool newEstimatorFrame = !estimatorTimestampInitialized ||
+            det.timestampNs != lastEstimatorTimestampNs;
+        if (newEstimatorFrame)
+        {
+            estimator.newFrame(det.timestampNs);
+            estimatorTimestampInitialized = true;
+            lastEstimatorTimestampNs = det.timestampNs;
+
+            if (!estimatorInitialized)
+            {
+                if (observationAvailable)
+                {
+                    estimator.init(observation);
+                    estimatorInitialized = true;
+                }
+            }
+            else
+            {
+                estimator.predict();
+                if (observationAvailable)
+                {
+                    estimator.update(observation);
+                }
             }
         }
 
@@ -252,6 +297,70 @@ int run()
         {
             cv::putText(display, "time comparison=waiting", cv::Point(10, 90),
                         cv::FONT_HERSHEY_SIMPLEX, 0.6, timestampColor, 2);
+        }
+
+        const auto_aim::tracker::TargetState& estimatedState = estimator.state();
+        const bool estimatorFinite =
+            std::isfinite(estimatedState.xc) && std::isfinite(estimatedState.yc) &&
+            std::isfinite(estimatedState.vxc) && std::isfinite(estimatedState.vyc) &&
+            std::isfinite(estimatedState.z) && std::isfinite(estimatedState.vz) &&
+            std::isfinite(estimatedState.yaw) && std::isfinite(estimatedState.vYaw) &&
+            std::isfinite(estimatedState.r);
+        const cv::Scalar estimatorColor = estimatorInitialized && estimatorFinite
+            ? cv::Scalar(255, 255, 0)
+            : cv::Scalar(0, 0, 255);
+
+        if (observationAvailable)
+        {
+            char observationText[192];
+            std::snprintf(
+                observationText,
+                sizeof(observationText),
+                "obs x=%.1f y=%.1f z=%.1f yaw=%.3f",
+                observation.xa,
+                observation.ya,
+                observation.za,
+                observation.yaw);
+            cv::putText(display, observationText, cv::Point(10, 150),
+                        cv::FONT_HERSHEY_SIMPLEX, 0.6, estimatorColor, 2);
+        }
+        else
+        {
+            cv::putText(display, "obs=missing", cv::Point(10, 150),
+                        cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(0, 0, 255), 2);
+        }
+
+        if (estimatorInitialized)
+        {
+            char stateText[192];
+            std::snprintf(
+                stateText,
+                sizeof(stateText),
+                "state xc=%.1f yc=%.1f z=%.1f yaw=%.3f r=%.1f",
+                estimatedState.xc,
+                estimatedState.yc,
+                estimatedState.z,
+                estimatedState.yaw,
+                estimatedState.r);
+            cv::putText(display, stateText, cv::Point(10, 180),
+                        cv::FONT_HERSHEY_SIMPLEX, 0.6, estimatorColor, 2);
+
+            char velocityText[192];
+            std::snprintf(
+                velocityText,
+                sizeof(velocityText),
+                "vel vx=%.1f vy=%.1f vz=%.1f wyaw=%.3f",
+                estimatedState.vxc,
+                estimatedState.vyc,
+                estimatedState.vz,
+                estimatedState.vYaw);
+            cv::putText(display, velocityText, cv::Point(10, 210),
+                        cv::FONT_HERSHEY_SIMPLEX, 0.6, estimatorColor, 2);
+        }
+        else
+        {
+            cv::putText(display, "estimator=waiting", cv::Point(10, 180),
+                        cv::FONT_HERSHEY_SIMPLEX, 0.6, estimatorColor, 2);
         }
 
         cv::imshow("full_chain", display);

@@ -9,74 +9,63 @@ namespace auto_aim::tracker
 TargetEstimator::TargetEstimator()
 {
     state_(Radius) = 200.0;
+    A << 1, dt_, 0, 0,   0, 0,   0, 0,   0,
+         0, 1,   0, 0,   0, 0,   0, 0,   0,
+         0, 0,   1, dt_, 0, 0,   0, 0,   0,
+         0, 0,   0, 1,   0, 0,   0, 0,   0,
+         0, 0,   0, 0,   1, dt_, 0, 0,   0,
+         0, 0,   0, 0,   0, 1,   0, 0,   0,
+         0, 0,   0, 0,   0, 0,   1, dt_, 0,
+         0, 0,   0, 0,   0, 0,   0, 1,   0,
+         0, 0,   0, 0,   0, 0,   0, 0,   1;
+    const auto positiveFinite = [](double variance)
+    {
+        return std::isfinite(variance) && variance > 0.0;
+    };
+    if (!positiveFinite(noise.qXc) || !positiveFinite(noise.qVxc)
+        || !positiveFinite(noise.qYc) || !positiveFinite(noise.qVyc)
+        || !positiveFinite(noise.qZa) || !positiveFinite(noise.qVza)
+        || !positiveFinite(noise.qYaw) || !positiveFinite(noise.qVyaw)
+        || !positiveFinite(noise.qRadius))
+        throw std::invalid_argument("Q variances must be finite and positive");
+    if (!positiveFinite(noise.rXa) || !positiveFinite(noise.rYa)
+        || !positiveFinite(noise.rZa) || !positiveFinite(noise.rYaw))
+        throw std::invalid_argument("R variances must be finite and positive");
+
+    const auto validCovariance = [](double covariance, double positionVariance, double velocityVariance)
+    {
+        // 用相关系数检查正定性，避免直接平方或方差相乘溢出。
+        const double correlation = covariance / std::sqrt(positionVariance) / std::sqrt(velocityVariance);
+        return std::isfinite(covariance) && std::isfinite(correlation) && std::abs(correlation) < 1.0;
+    };
+    if (!validCovariance(noise.qXcVxc, noise.qXc, noise.qVxc)
+        || !validCovariance(noise.qYcVyc, noise.qYc, noise.qVyc)
+        || !validCovariance(noise.qZaVza, noise.qZa, noise.qVza)
+        || !validCovariance(noise.qYawVyaw, noise.qYaw, noise.qVyaw))
+        throw std::invalid_argument("Q position/velocity covariance must have |correlation| < 1");
+
+    Q << noise.qXc,    noise.qXcVxc, 0,            0,            0,            0,            0,              0,              0,
+         noise.qXcVxc, noise.qVxc,   0,            0,            0,            0,            0,              0,              0,
+         0,            0,           noise.qYc,    noise.qYcVyc, 0,            0,            0,              0,              0,
+         0,            0,           noise.qYcVyc, noise.qVyc,   0,            0,            0,              0,              0,
+         0,            0,           0,            0,            noise.qZa,    noise.qZaVza, 0,              0,              0,
+         0,            0,           0,            0,            noise.qZaVza, noise.qVza,   0,              0,              0,
+         0,            0,           0,            0,            0,            0,            noise.qYaw,     noise.qYawVyaw, 0,
+         0,            0,           0,            0,            0,            0,            noise.qYawVyaw, noise.qVyaw,    0,
+         0,            0,           0,            0,            0,            0,            0,              0,              noise.qRadius;
+
+    R << noise.rXa, 0,         0,         0,
+         0,         noise.rYa, 0,         0,
+         0,         0,         noise.rZa, 0,
+         0,         0,         0,         noise.rYaw;
 }
 
-TargetEstimator::TransitionMatrix TargetEstimator::transitionMatrix() const
-{
-    if (!std::isfinite(dt_) || dt_ < 0.0)
-        throw std::invalid_argument("motion model dt must be finite and nonnegative");
-    TransitionMatrix a = TransitionMatrix::Identity();
-    a(Xc, Vxc) = a(Yc, Vyc) = a(Za, Vza) = a(Yaw, Vyaw) = dt_;
-    return a;
-}
-
-TargetEstimator::MeasurementVector TargetEstimator::h() const
+TargetEstimator::MeasurementVector TargetEstimator::h(const StateVector& x) const
 {
     MeasurementVector predicted;
-    predicted << state_(Xc) - state_(Radius) * std::cos(state_(Yaw)),
-                 state_(Yc) - state_(Radius) * std::sin(state_(Yaw)), state_(Za), state_(Yaw);
+    predicted << x(Xc) - x(Radius) * std::cos(x(Yaw)),
+                 x(Yc) - x(Radius) * std::sin(x(Yaw)), x(Za), x(Yaw);
     return predicted;
-}
-
-TargetEstimator::MeasurementJacobian TargetEstimator::H() const
-{
-    MeasurementJacobian jacobian = MeasurementJacobian::Zero();
-    const double sine = std::sin(state_(Yaw));
-    const double cosine = std::cos(state_(Yaw));
-    jacobian(0, Xc) = jacobian(1, Yc) = jacobian(2, Za) = jacobian(3, Yaw) = 1.0;
-    jacobian(0, Yaw) = state_(Radius) * sine;
-    jacobian(0, Radius) = -cosine;
-    jacobian(1, Yaw) = -state_(Radius) * cosine;
-    jacobian(1, Radius) = -sine;
-    return jacobian;
-}
-
-TargetEstimator::ProcessNoiseMatrix TargetEstimator::Q() const
-{
-    ProcessNoiseMatrix q = ProcessNoiseMatrix::Zero();
-    for (int i = 0; i < 9; ++i)
-    {
-        const double variance = noise.processVariances[i];
-        if (!std::isfinite(variance) || variance <= 0.0)
-            throw std::invalid_argument("Q variances must be finite and positive");
-        q(i, i) = variance;
-    }
-    for (int i = 0; i < 4; ++i)
-    {
-        const int position = 2 * i;
-        const double covariance = noise.positionVelocityCovariances[i];
-        // 用相关系数检查正定性，避免直接平方或方差相乘溢出。
-        const double correlation = covariance / std::sqrt(q(position, position))
-            / std::sqrt(q(position + 1, position + 1));
-        if (!std::isfinite(covariance) || !std::isfinite(correlation)
-            || std::abs(correlation) >= 1.0)
-            throw std::invalid_argument("Q position/velocity covariance must have |correlation| < 1");
-        q(position, position + 1) = q(position + 1, position) = covariance;
-    }
-    return q;
-}
-
-TargetEstimator::MeasurementNoiseMatrix TargetEstimator::R() const
-{
-    MeasurementNoiseMatrix r = MeasurementNoiseMatrix::Zero();
-    for (int i = 0; i < 4; ++i)
-    {
-        const double variance = noise.measurementVariances[i];
-        if (!std::isfinite(variance) || variance <= 0.0)
-            throw std::invalid_argument("R variances must be finite and positive");
-        r(i, i) = variance;
-    }
-    return r;
 }
 
 void TargetEstimator::newFrame(std::uint64_t timestampNs)
@@ -99,6 +88,18 @@ void TargetEstimator::newFrame(std::uint64_t timestampNs)
 
 void TargetEstimator::init(const ArmorMeasurement& z)
 {
+    // 先校验全部初始方差，避免失败时部分重置已有跟踪状态。
+    const auto positiveFinite = [](double variance)
+    {
+        return std::isfinite(variance) && variance > 0.0;
+    };
+    if (!positiveFinite(error.pXc) || !positiveFinite(error.pVxc)
+        || !positiveFinite(error.pYc) || !positiveFinite(error.pVyc)
+        || !positiveFinite(error.pZa) || !positiveFinite(error.pVza)
+        || !positiveFinite(error.pYaw) || !positiveFinite(error.pVyaw)
+        || !positiveFinite(error.pRadius))
+        throw std::invalid_argument("P initial variances must be finite and positive");
+
     //先把整车状态全部重置为默认
     state_.setZero();
     state_(Radius) = 200.0;
@@ -113,6 +114,17 @@ void TargetEstimator::init(const ArmorMeasurement& z)
     state_(Yc) = z.ya + r * std::sin(yaw);
     state_(Za) = z.za;
     state_(Yaw) = yaw;
+
+    // 每次初始化都清除历史协方差，直接使用可调的初始对角方差。
+    P << error.pXc, 0,          0,         0,          0,         0,          0,          0,           0,
+         0,         error.pVxc, 0,         0,          0,         0,          0,          0,           0,
+         0,         0,          error.pYc, 0,          0,         0,          0,          0,           0,
+         0,         0,          0,         error.pVyc, 0,         0,          0,          0,           0,
+         0,         0,          0,         0,          error.pZa, 0,          0,          0,           0,
+         0,         0,          0,         0,          0,         error.pVza, 0,          0,           0,
+         0,         0,          0,         0,          0,         0,          error.pYaw, 0,           0,
+         0,         0,          0,         0,          0,         0,          0,          error.pVyaw, 0,
+         0,         0,          0,         0,          0,         0,          0,          0,           error.pRadius;
 }
 
 void TargetEstimator::predict()
@@ -127,7 +139,7 @@ void TargetEstimator::predict()
 ArmorMeasurement TargetEstimator::predictedArmor() const
 {
     //h(x)：由中心/半径/yaw 推出装甲板世界位姿
-    const MeasurementVector predicted = h();
+    const MeasurementVector predicted = h(state_);
     ArmorMeasurement pred;
     pred.xa = predicted(0);
     pred.ya = predicted(1);

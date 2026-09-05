@@ -1,6 +1,5 @@
 #pragma once
 
-#include <array>
 #include <cstdint>
 
 #include <Eigen/Core>
@@ -15,6 +14,7 @@ class TargetEstimator
 {
 public:
     using StateVector = Eigen::Matrix<double, 9, 1>;
+    using StateCovarianceMatrix = Eigen::Matrix<double, 9, 9>;
     using TransitionMatrix = Eigen::Matrix<double, 9, 9>;
     using MeasurementVector = Eigen::Matrix<double, 4, 1>;
     using MeasurementJacobian = Eigen::Matrix<double, 4, 9>;
@@ -26,35 +26,50 @@ public:
 
     struct NoiseParameters
     {
-        // Q 对角线：xc,vxc,yc,vyc,za,vza,yaw,vyaw,r。
-        // 单位依次为 mm²,(mm/s)²,mm²,(mm/s)²,mm²,(mm/s)²,rad²,(rad/s)²,mm²。
-        std::array<double, 9> processVariances{
-            100.0, 10000.0, 100.0, 10000.0, 100.0, 10000.0, 0.001, 0.1, 1.0};
-        // Q 对称协方差：xc/vxc,yc/vyc,za/vza,yaw/vyaw；前三项 mm²/s，末项 rad²/s。
-        std::array<double, 4> positionVelocityCovariances{100.0, 100.0, 100.0, 0.001};
-        // R 对角线：xa,ya,za,yaw；单位 mm²,mm²,mm²,rad²。
-        std::array<double, 4> measurementVariances{100.0, 100.0, 100.0, 0.01};
+        // Q 对角线：过程噪声方差，固定每帧，不随 dt 缩放。
+        double qXc = 100.0;       // mm²
+        double qVxc = 10000.0;    // (mm/s)²
+        double qYc = 100.0;       // mm²
+        double qVyc = 10000.0;    // (mm/s)²
+        double qZa = 100.0;       // mm²
+        double qVza = 10000.0;    // (mm/s)²
+        double qYaw = 0.001;      // rad²
+        double qVyaw = 0.1;       // (rad/s)²
+        double qRadius = 1.0;     // mm²
+
+        // Q 对称协方差：各位置与对应速度。
+        double qXcVxc = 100.0;    // mm²/s
+        double qYcVyc = 100.0;    // mm²/s
+        double qZaVza = 100.0;    // mm²/s
+        double qYawVyaw = 0.001;  // rad²/s
+
+        // R 对角线：测量噪声方差。
+        double rXa = 100.0;       // mm²
+        double rYa = 100.0;       // mm²
+        double rZa = 100.0;       // mm²
+        double rYaw = 0.01;       // rad²
+    };
+
+    struct ErrorParameters
+    {
+        // P 初始对角线：估计误差方差，与 Q/R 独立；默认 1 暂作占位。
+        double pXc = 1.0;         // mm²
+        double pVxc = 1.0;        // (mm/s)²
+        double pYc = 1.0;         // mm²
+        double pVyc = 1.0;        // (mm/s)²
+        double pZa = 1.0;         // mm²
+        double pVza = 1.0;        // (mm/s)²
+        double pYaw = 1.0;        // rad²
+        double pVyaw = 1.0;       // (rad/s)²
+        double pRadius = 1.0;     // mm²
     };
 
     TargetEstimator();
 
-    // A 的结构固定，四个位置/速度系数使用本帧 dt（秒）。
-    TransitionMatrix transitionMatrix() const;
-    MeasurementVector h() const;
-    // 使用当前 state_ 求 dh/dx；后续 EKF 中在预测后调用。
-    MeasurementJacobian H() const;
-
-    // 固定每帧 Q/R，不随 dt 缩放。参数未经实测标定，后续可重新设置。
-    // 要求参数有限、方差 > 0、每组 cov² < var_position * var_velocity。
-    // 每次构造读取 noise，非法输入抛出 invalid_argument。
-    NoiseParameters noise;
-    ProcessNoiseMatrix Q() const;
-    MeasurementNoiseMatrix R() const;
-
-    // 新一帧进来：用两帧时间戳之差算好本帧 dt_，供 predict / update 用；同时记下时间戳
     void newFrame(std::uint64_t timestampNs);
 
-    // 首帧起模型：把整车状态全部重置为默认(速度清零、半径回默认值)，再由观测装甲反推中心
+    // 重置速度/半径，由观测装甲反推中心，并按 error.pXXX 重置 P；保留时间基准。
+    // P 初始方差须有限且 > 0，否则抛出 invalid_argument，不修改状态、观测和 P。
     void init(const ArmorMeasurement& z);
 
     // 匀速模型预测：位置/高度/角度按 当前值 + 速度 × dt_ 推进；dt_ 由 newFrame 算好
@@ -82,7 +97,15 @@ public:
 
 private:
     StateVector state_ = StateVector::Zero();
+    StateCovarianceMatrix P = StateCovarianceMatrix::Identity(); // init 前的占位值
     MeasurementVector z_ = MeasurementVector::Zero(); // 最近一次实际观测：xa,ya,za,yaw
+    TransitionMatrix A;
+    MeasurementJacobian H = MeasurementJacobian::Zero();
+    NoiseParameters noise; // 构造时填写 Q/R；参数不自动刷新矩阵。
+    ErrorParameters error; // 每次 init 时用于重置 P。
+    ProcessNoiseMatrix Q = ProcessNoiseMatrix::Zero();
+    MeasurementNoiseMatrix R = MeasurementNoiseMatrix::Zero();
+    MeasurementVector h(const StateVector& x) const;
     double dt_ = 0.0;                    // 本帧 dt(秒)，由 newFrame 算好，predict/update 用
     bool timestampInitialized_ = false;
     std::uint64_t lastTimestampNs_ = 0;  // 上一帧相机启动后单调纳秒，用于算 dt_
