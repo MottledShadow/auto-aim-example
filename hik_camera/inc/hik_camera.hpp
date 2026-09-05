@@ -26,14 +26,13 @@ struct HikCameraFrame
     cv::Mat image;
     unsigned int frameNumber = 0;
     std::uint64_t hardwareTimestamp = 0;        //相机时间戳
-    std::uint64_t hostReceiveTimestampNs = 0;   //Jetson时间戳
     std::optional<std::uint64_t> timestampNs;   //标定后的时间戳
 };
 
 class HikCamera
 {
 public:
-    explicit HikCamera(HikCameraOptions options = {});
+    HikCamera();
     ~HikCamera();
 
     HikCamera(const HikCamera&) = delete;
@@ -45,7 +44,7 @@ public:
 
 private:
     void cleanup();
-    int grabFrame(HikCameraFrame& frame, unsigned int timeoutMs);
+    int grabFrame(HikCameraFrame& frame);
     void captureLoop();
 
     void* handle_ = nullptr;
@@ -62,8 +61,6 @@ private:
     int captureResult_ = MV_OK;
     HikCameraOptions cameraOptions_;
     double tickToNanoseconds_ = 10.0;
-    bool timestampOriginSet_ = false;
-    std::uint64_t timestampOriginTick_ = 0;
 };
 
 }
